@@ -109,6 +109,17 @@ const ThirdStep = ({ mssqlServerName }) => {
   const [fileInputKey, setFileInputKey] = useState(0); // Reset file input after each upload
   const [fieldNameMapping, setFieldNameMapping] = useState({});
   const [uploadedFileName, setUploadedFileName] = useState(null);
+  const [isQueryModalOpen, setIsQueryModalOpen] = useState(false);
+  const [modalQuery, setModalQuery] = useState('');
+
+const openQueryModal = () => {
+  setModalQuery(query); // מכניס את השאילתה הנוכחית ל-MODAL
+  setIsQueryModalOpen(true);
+};
+
+const closeQueryModal = () => {
+  setIsQueryModalOpen(false);
+};
 
 // הגדרת השדות הראשוניים כקבוע
 const initialFields = [
@@ -706,19 +717,20 @@ const updateTreeFromQuery = (query) => {
     }
   };
 
-  const handleQueryExecution = async () => {
-    if (!query) {
+  const handleQueryExecution = async (currentQuery) => {
+    const queryToExecute = currentQuery || query; // השתמש בשאילתה הנוכחית אם נשלחה
+    if (!queryToExecute || queryToExecute.trim() === '') {
       console.error("No query provided.");
       return;
     }
   
     try {
-      const response = await axios.post("http://localhost:3001/execute-query", { query });
+      const response = await axios.post("http://localhost:3001/execute-query", { query: queryToExecute });
   
       if (response.data.success) {
         console.log("Query Result with Source:", response.data.result);
-        setQueryResult(response.data.result); // כאן יש לוודא שהתוצאה נשמרת בפורמט הנכון
-        updateTreeFromQuery(query); // עדכון העץ
+        setQueryResult(response.data.result);
+        updateTreeFromQuery(queryToExecute); // עדכון עץ הנתונים מהשאילתה
       } else {
         console.error("Query execution failed:", response.data.message);
       }
@@ -726,6 +738,7 @@ const updateTreeFromQuery = (query) => {
       console.error("Error executing query:", error.message);
     }
   };
+  
   
   
   const handleSaveQuery = () => {
@@ -858,149 +871,141 @@ const updateTreeFromQuery = (query) => {
     }
   };
   
+  const handleCreateTableClick = async () => {
+    // בקש מהמשתמש להזין את שם הטבלה
+    const tableName = prompt("Please enter the name for the new table:");
+    if (!tableName) {
+        alert("Table name is required to proceed.");
+        return;
+    }
 
+    const mappedFields = computeMappedFields(); // מיפוי השדות
+    const data = await fetchAllTablesData(); // השגת הנתונים
+
+    console.log("Request Data:", { tableName, mappedFields, data });
+
+    // בדוק אם הנתונים תקינים
+    if (!mappedFields || !data || !Array.isArray(data) || data.length === 0) {
+        console.error("Missing or invalid request data");
+        alert("Please provide valid data before creating the table.");
+        return;
+    }
+
+    try {
+        // שליחת הבקשה לשרת
+        const response = await axios.post("http://localhost:3001/create-table-with-data", {
+            tableName,
+            mappedFields,
+            data,
+        });
+        console.log("Response:", response.data);
+        alert(`Table "${tableName}" created successfully!`);
+    } catch (error) {
+        console.error("Error creating table:", error);
+        alert("Failed to create table. Please check the server logs for more details.");
+    }
+};
+
+
+  
   
   return (
 <DndProvider backend={HTML5Backend}>
-  <div style={{ display: 'flex', flexDirection: 'row', height: '100vh', backgroundColor: '#f4f6f8' }}>
-    <div style={{ flex: 1, padding: '20px', overflowY: 'auto', backgroundColor: '#ffffff', borderRight: '1px solid #ddd' }}>
-      {/* תצוגת העץ של מסדי הנתונים */}
-      <h3 style={{ color: '#007bff', marginBottom: '20px' }}>Database TreeView</h3>
-      <div>{tree.map((db) => renderTree(db))}</div>
-    </div>
-    <div style={{ flex: 1, padding: '20px', overflowY: 'auto', backgroundColor: '#f7f9fc' }}>
+<div style={{ display: 'flex', flexDirection: 'row', height: '100vh', backgroundColor: '#f4f6f8' }}>
+  {/* צד שמאל - תצוגת עץ מסדי הנתונים */}
+  <div style={{ flex: 1, padding: '20px', overflowY: 'auto', backgroundColor: '#ffffff', borderRight: '1px solid #ddd' }}>
+    <h3 style={{ color: '#007bff', marginBottom: '20px' }}>Database TreeView</h3>
+    <div>{tree.map((db) => renderTree(db))}</div>
+  </div>
+
+  {/* צד ימין */}
+  <div style={{ flex: 1, padding: '20px', overflowY: 'auto', backgroundColor: '#f7f9fc' }}>
     <h3 style={{ color: '#007bff', marginBottom: '20px' }}>
       {uploadedFileName || 'Example Fields'}
     </h3>
-      {/* אייקון לטעינת קובץ */}
-      <div style={{ marginBottom: '20px' }}>
-        <input
-          key={fileInputKey}
-          type="file"
-          accept=".txt"
-          onChange={handleFileUpload}
-          style={{ display: 'none' }}
-          id="file-upload"
-        />
-<div
-  style={{
-    display: 'flex', // שימוש ב-Flexbox
-    gap: '10px', // רווח אחיד בין הכפתורים
-    marginBottom: '20px', // רווח מלמטה
-  }}
->
-  {/* כפתור Upload Fields */}
-  <label
-    htmlFor="file-upload"
-    style={{
-      flex: '1', // גודל אחיד עבור כל כפתור
-      padding: '12px 24px',
-      backgroundColor: '#007bff',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontWeight: '600',
-      textAlign: 'center',
-      transition: 'background-color 0.3s ease',
-      display: 'inline-block',
-    }}
-  >
-    Upload Fields
-  </label>
 
-  {/* כפתור Clear Fields */}
-  <button
-    onClick={handleClearFields}
-    style={{
-      flex: '1', // גודל אחיד עבור כל כפתור
-      padding: '12px 24px',
-      backgroundColor: '#007bff',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontWeight: '600',
-      textAlign: 'center',
-      transition: 'background-color 0.3s ease',
-    }}
-  >
-    Clear Fields
-  </button>
-</div>
-
-
-      </div>
-      {/* תצוגת השדות */}
-      {exampleFields.map((field) => (
-        <ExampleField key={field.id} field={field} onDrop={handleDrop} onUnlink={handleUnlink} />
-      ))}
-
-      <textarea
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Enter your complex query here..."
-        style={{
-          width: '100%',
-          height: '120px',
-          marginTop: '20px',
-          padding: '15px',
-          borderRadius: '12px',
-          border: '1px solid #ddd',
-          fontSize: '1em',
-          backgroundColor: '#ffffff',
-        }}
+    {/* אייקון לטעינת קובץ */}
+    <div style={{ marginBottom: '20px' }}>
+      <input
+        key={fileInputKey}
+        type="file"
+        accept=".txt"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+        id="file-upload"
       />
+
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <label
+          htmlFor="file-upload"
+          style={{
+            flex: '1',
+            padding: '12px 24px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            textAlign: 'center',
+          }}
+        >
+          Upload Fields
+        </label>
+
+        <button
+          onClick={handleClearFields}
+          style={{
+            flex: '1',
+            padding: '12px 24px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: '600',
+          }}
+        >
+          Clear Fields
+        </button>
+
+        <button
+          onClick={openQueryModal}
+          style={{
+            flex: '1',
+            padding: '12px 24px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: '600',
+          }}
+        >
+          QUERY
+        </button>
+        
+      </div>
+    </div>
+
+    {/* תצוגת השדות */}
+    {exampleFields.map((field) => (
+      <ExampleField key={field.id} field={field} onDrop={handleDrop} onUnlink={handleUnlink} />
+    ))}
+
+
+{/* כפתור VIEW DATA */}
 <div
   style={{
-    display: 'flex', // שימוש ב-Flexbox
-    gap: '10px', // רווח אחיד בין הכפתורים
-    marginTop: '20px', // רווח מלמעלה
+    display: 'flex',
+    gap: '10px',
+    marginTop: '20px',
   }}
 >
-  {/* כפתור Execute Query */}
-  <button
-    onClick={handleQueryExecution}
-    style={{
-      flex: '1', // גודל אחיד לכל הכפתורים
-      padding: '12px 24px',
-      backgroundColor: '#007bff',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontWeight: '600',
-      textAlign: 'center',
-      transition: 'background-color 0.3s ease',
-    }}
-  >
-    Execute Query
-  </button>
-
-  {/* כפתור Save Query */}
-  <button
-    onClick={handleSaveQuery}
-    style={{
-      flex: '1', // גודל אחיד לכל הכפתורים
-      padding: '12px 24px',
-      backgroundColor: '#007bff',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontWeight: '600',
-      textAlign: 'center',
-      transition: 'background-color 0.3s ease',
-    }}
-  >
-    Save Query
-  </button>
-
-  {/* כפתור VIEW DATA */}
   <button
     onClick={handleViewDataClick}
     style={{
-      flex: '1', // גודל אחיד לכל הכפתורים
+      flex: '1',
       padding: '12px 24px',
       backgroundColor: '#007bff',
       color: 'white',
@@ -1009,25 +1014,115 @@ const updateTreeFromQuery = (query) => {
       cursor: 'pointer',
       fontWeight: '600',
       textAlign: 'center',
-      transition: 'background-color 0.3s ease',
     }}
   >
     View Data
   </button>
-</div>
+  <button
+    onClick={handleCreateTableClick}
+    style={{
+      flex: '1',
+      padding: '12px 24px',
+      backgroundColor: '#28a745',
+      color: 'white',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontWeight: '600',
+      textAlign: 'center',
+    }}
+  >
+    Create Table
+  </button>
+  </div>
+    {/* חלון ה-MODAL */}
+    {isQueryModalOpen && (
+      <div
+        style={{
+          position: 'fixed',
+          top: '0',
+          left: '0',
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: '#fff',
+            borderRadius: '10px',
+            width: '500px',
+            padding: '20px',
+            boxShadow: '0 5px 15px rgba(0, 0, 0, 0.3)',
+          }}
+        >
+          <h3 style={{ marginBottom: '10px', color: '#007bff' }}>Query Editor</h3>
 
-      {queryResult && (
-  <div>
-    <h4>Query Result:</h4>
-    <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          {/* תיבת טקסט להזנת QUERY */}
+          <textarea
+            value={modalQuery}
+            onChange={(e) => setModalQuery(e.target.value)}
+            placeholder="Enter your query here..."
+            style={{
+              width: '100%',
+              height: '120px',
+              marginBottom: '10px',
+              padding: '10px',
+              borderRadius: '8px',
+              border: '1px solid #ddd',
+            }}
+          />
+
+          {/* קומבובוקס לשאילתות שמורות */}
+          <select
+            onChange={(e) => setModalQuery(e.target.value)}
+            style={{
+              width: '100%',
+              marginBottom: '10px',
+              padding: '8px',
+              borderRadius: '8px',
+              border: '1px solid #ddd',
+            }}
+          >
+            <option value="">Select a saved query</option>
+            {savedQueries.map((savedQuery, index) => (
+              <option key={index} value={savedQuery}>
+                {savedQuery}
+              </option>
+            ))}
+          </select>
+{/* תוצאות השאילתה */}
+{queryResult && (
+  <div
+    style={{
+      marginTop: '20px',
+      padding: '10px',
+      border: '1px solid #ddd',
+      borderRadius: '8px',
+      backgroundColor: '#f9f9f9',
+      maxHeight: '200px',
+      overflowY: 'auto',
+    }}
+  >
+    <h4 style={{ color: '#007bff', marginBottom: '10px' }}>Query Results</h4>
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr>
           {queryResult.headers.map((header, index) => (
-            <th key={index} style={{ border: '1px solid #ddd', padding: '8px' }}>
+            <th
+              key={index}
+              style={{
+                border: '1px solid #ddd',
+                padding: '8px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                textAlign: 'left',
+              }}
+            >
               {header.name}
-              <div style={{ fontSize: '0.8em', color: '#888' }}>
-                {header.source || 'Unknown Source'}
-              </div>
             </th>
           ))}
         </tr>
@@ -1036,8 +1131,15 @@ const updateTreeFromQuery = (query) => {
         {queryResult.data.map((row, rowIndex) => (
           <tr key={rowIndex}>
             {queryResult.headers.map((header, colIndex) => (
-              <td key={colIndex} style={{ border: '1px solid #ddd', padding: '8px' }}>
-                {row[header.name]}
+              <td
+                key={colIndex}
+                style={{
+                  border: '1px solid #ddd',
+                  padding: '8px',
+                  textAlign: 'left',
+                }}
+              >
+                {row[header.name] || 'N/A'}
               </td>
             ))}
           </tr>
@@ -1046,26 +1148,72 @@ const updateTreeFromQuery = (query) => {
     </table>
   </div>
 )}
-      <select
-        onChange={(e) => handleLoadQuery(e.target.value)}
-        style={{
-          marginTop: '20px',
-          width: '100%',
-          padding: '10px',
-          borderRadius: '8px',
-          border: '1px solid #ddd',
-          fontSize: '1em',
-        }}
-      >
-        <option value="">Select a saved query</option>
-        {savedQueries.map((savedQuery, index) => (
-          <option key={index} value={savedQuery}>
-            {savedQuery}
-          </option>
-        ))}
-      </select>
-    </div>
+
+          {/* כפתורים לשליטה */}
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <button
+              onClick={() => {
+                if (modalQuery.trim() !== '') {
+                  setSavedQueries([...savedQueries, modalQuery]);
+                  alert('Query saved successfully!');
+                  closeQueryModal();
+                } else {
+                  alert('Query cannot be empty!');
+                }
+              }}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#28a745',
+                color: 'white',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Save Query
+            </button>
+
+            <button
+              onClick={() => {
+                if (modalQuery.trim() !== '') {
+                  setQuery(modalQuery);
+                  handleQueryExecution();
+                  closeQueryModal();
+                } else {
+                  alert('Query cannot be empty!');
+                }
+              }}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Execute Query
+            </button>
+
+            <button
+              onClick={closeQueryModal}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
+</div>
 </DndProvider>
 );
 };
