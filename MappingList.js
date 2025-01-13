@@ -102,25 +102,28 @@ function MappingList() {
         }
     };
 
-    const handleStatusToggle = async (mappingId, currentStatus) => {
+    const handleStatusToggle = async (id, currentStatus) => {
         try {
-            const newStatus = currentStatus === 1 ? 0 : 1;
-            const response = await axios.put(`http://localhost:3001/mapping/update-status/${mappingId}`, { newStatus });
-
-            if (response.data.success) {
-                setMappings((prevMappings) =>
-                    prevMappings.map((mapping) =>
-                        mapping.id === mappingId ? { ...mapping, status: newStatus } : mapping
-                    )
-                );
-                console.log('Status updated successfully.');
-            } else {
-                console.log('Failed to update status.');
-            }
+          const newStatus = currentStatus === 1 ? 0 : 1;
+          await axios.put(`http://localhost:3001/mapping/update-status/${id}`, {
+            status: newStatus,
+          });
+      
+          // עדכון מצב הטבלה באופן מקומי
+          setMappings((prevMappings) =>
+            prevMappings.map((mapping) =>
+              mapping.id === id ? { ...mapping, status: newStatus } : mapping
+            )
+          );
+      
+        //   alert('Status updated successfully.');
         } catch (error) {
-            console.error('Error updating status:', error);
+          console.error('Error updating status:', error);
+          alert('Failed to update status.');
         }
-    };
+      };
+      
+      
 
     return (
         <Container sx={{ marginTop: '40px', textAlign: 'center' }}>

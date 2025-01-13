@@ -872,41 +872,56 @@ const updateTreeFromQuery = (query) => {
   };
   
   const handleCreateTableClick = async () => {
-    // בקש מהמשתמש להזין את שם הטבלה
     const tableName = prompt("Please enter the name for the new table:");
     if (!tableName) {
-        alert("Table name is required to proceed.");
-        return;
+      alert("Table name is required to proceed.");
+      return;
     }
-
-    const mappedFields = computeMappedFields(); // מיפוי השדות
+  
+    const mappedFields = computeMappedFields(); // חישוב מיפוי השדות
     const data = await fetchAllTablesData(); // השגת הנתונים
-
-    console.log("Request Data:", { tableName, mappedFields, data });
-
-    // בדוק אם הנתונים תקינים
+  
     if (!mappedFields || !data || !Array.isArray(data) || data.length === 0) {
-        console.error("Missing or invalid request data");
-        alert("Please provide valid data before creating the table.");
-        return;
+      alert("Invalid or missing data. Ensure fields are mapped and data is available.");
+      return;
     }
-
+  
     try {
-        // שליחת הבקשה לשרת
-        const response = await axios.post("http://localhost:3001/create-table-with-data", {
-            tableName,
-            mappedFields,
-            data,
-        });
-        console.log("Response:", response.data);
+      const response = await axios.post("http://localhost:3001/create-table-with-data", {
+        tableName,
+        mappedFields,
+        data,
+      });
+  
+      if (response.data.success) {
         alert(`Table "${tableName}" created successfully!`);
+      } else {
+        alert(`Failed to create table: ${response.data.message}`);
+      }
     } catch (error) {
-        console.error("Error creating table:", error);
-        alert("Failed to create table. Please check the server logs for more details.");
+      console.error("Error creating table:", error);
+      alert("An error occurred while creating the table. Please check the server logs.");
     }
-};
-
-
+  };
+  
+  const handleSaveMappingClick = async () => {
+    try {
+      const response = await axios.post('http://localhost:3001/save-mapping');
+      if (response.data.success) {
+        alert('Mapping saved successfully!');
+        // מעבר לעמוד Mapping List
+        window.location.href = '/mapping/list';
+      } else {
+        alert('Failed to save mapping.');
+      }
+    } catch (error) {
+      console.error('Error saving mapping:', error);
+      alert('An error occurred while saving the mapping.');
+    }
+  };
+  
+  // כפתור חדש
+  <button onClick={handleSaveMappingClick}>SAVE MAPPING</button>
   
   
   return (
@@ -1034,6 +1049,7 @@ const updateTreeFromQuery = (query) => {
   >
     Create Table
   </button>
+  <button onClick={handleSaveMappingClick}>SAVE MAPPING</button>
   </div>
     {/* חלון ה-MODAL */}
     {isQueryModalOpen && (

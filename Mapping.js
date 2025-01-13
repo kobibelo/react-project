@@ -42,14 +42,48 @@ function Mapping() {
     removeLinkedField(field);
   };
 
-  const handleNextClick = () => {
+  const handleNextClick = async () => {
     if (step === 1 && !mappingName && !mappingInfo) {
       setTestMessage('Please enter a mapping name and info.');
       return;
     }
+  
+    if (step === 2) {
+      try {
+        const response = await axios.post('http://localhost:3001/save-mapping-steps', {
+          mappingName,
+          mappingInfo,
+          importServerType,
+          importConnectionType,
+          importServerName,
+          importDatabaseName,
+          importUserName: 'your_import_username', // החלף בערך המתאים
+          importPassword: 'your_import_password', // החלף בערך המתאים
+          exportServerType,
+          exportConnectionType,
+          exportServerName,
+          exportDatabaseName,
+          exportUserName,
+          exportPassword,
+          newTableName: `new_${selectedTable}`,
+          fieldMappings,
+        });
+  
+        if (!response.data.success) {
+          setTestMessage('Failed to save mapping steps.');
+          return;
+        }
+      } catch (error) {
+        console.error('Error saving mapping steps:', error);
+        setTestMessage('Error saving mapping steps.');
+        return;
+      }
+    }
+  
     setTestMessage('');
     setStep(step + 1);
   };
+  
 
   const handleBackClick = () => {
     setTestMessage('');
