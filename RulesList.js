@@ -45,12 +45,14 @@ function RulesList() {
     useEffect(() => {
         axios.get('http://localhost:3001/rules/list')
             .then(response => {
+                console.log("📥 Received rules list:", response.data.rules); // ✅ בדיקה אם הנתונים מגיעים
                 setRules(response.data.rules);
             })
             .catch(error => {
-                console.error('Error fetching rules:', error);
+                console.error('❌ Error fetching rules list:', error);
             });
     }, []);
+    console.log("🔍 State of rules:", rules);    
 
     const handleEditClick = (rule) => {
         setEditRule(rule);
@@ -110,28 +112,39 @@ function RulesList() {
         }
     };
 
-    const handleFetchRuleDetails = async (ruleId) => {
+    const handleFetchRuleDetails = async (rule) => {
+        const conditions = typeof rule.conditions === "string" 
+            ? JSON.parse(rule.conditions) 
+            : rule.conditions;
+    
+        const queryData = {
+            selectedTable: rule.selected_table,
+            conditions,
+            ruleId: rule.id,
+        };
+    
         try {
-            const response = await axios.post(`http://localhost:3001/query-rule/${ruleId}`);
+            const response = await axios.post('http://localhost:3001/query-db', queryData);
             if (response.data.success) {
                 displayQueryResultInNewWindow({
-                    ruleName: response.data.rule.rule_name,
-                    ruleInfo: response.data.rule.rule_info,
-                    matchingRecords: response.data.rule.matching_records,
-                    totalRecords: response.data.rule.total_records,
-                    queryDate: new Date(response.data.rule.query_date).toLocaleString(),
-                    conditions: response.data.rule.conditions,
-                    records: response.data.rule.records || [],
+                    ruleName: rule.rule_name,
+                    ruleInfo: rule.rule_info,
+                    matchingRecords: response.data.matchingRecords,
+                    totalRecords: response.data.totalRecords,
+                    queryDate: response.data.queryDate,
+                    conditions,  // כעת `conditions` בטוח תקין
+                    records: response.data.records || [],
                 });
             } else {
-                console.log('Failed to fetch rule details.');
+                console.log('Failed to fetch query results.');
             }
         } catch (error) {
-            console.error('Error fetching rule details:', error);
+            console.error('Error fetching query results:', error);
         }
     };
     
-    const displayQueryResultInNewWindow = (queryResult) => {
+    
+        const displayQueryResultInNewWindow = (queryResult) => {
         if (!Array.isArray(queryResult.conditions)) {
             console.error("Conditions is not an array:", queryResult.conditions);
             return;
@@ -176,9 +189,6 @@ function RulesList() {
         `);
     };
     
-       
-    
-
     return (
         <Container sx={{ marginTop: '40px', textAlign: 'center' }}>
             <Typography variant="h4" color="primary" gutterBottom>
@@ -218,7 +228,7 @@ function RulesList() {
                             <StyledTableCell>{new Date(rule.last_update).toLocaleString()}</StyledTableCell>
                             <StyledTableCell>
                                 <ActionsContainer>
-                                    <Button variant="contained" onClick={() => handleFetchRuleDetails(rule.id)}>Query DB</Button>
+                                    <Button variant="contained" onClick={() => handleFetchRuleDetails(rule)}>Query DB</Button>
                                     <Button variant="contained" color="primary" onClick={() => navigate(`/rules/update/${rule.id}`)}>Edit</Button>
                                     <InactiveButton variant="contained" onClick={() => handleDeleteClick(rule.id)}>Delete</InactiveButton>
                                 </ActionsContainer>
