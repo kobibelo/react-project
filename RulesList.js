@@ -11,7 +11,7 @@ const StyledTableCell = styled(TableCell)({
     textAlign: 'center',
 });
 
-const StyledTableHeadCell = styled(StyledTableCell)({
+const StyledTableHeadCell = styled(TableCell)({
     backgroundColor: '#1976d2',
     color: 'white',
     fontWeight: 'bold',
@@ -21,10 +21,6 @@ const StyledButton = styled(Button)(({ theme }) => ({
     margin: '0 5px',
     color: 'white',
 }));
-
-const ActiveButton = styled(StyledButton)({
-    backgroundColor: '#4caf50',
-});
 
 const InactiveButton = styled(StyledButton)({
     backgroundColor: '#f44336',
@@ -37,45 +33,61 @@ const ActionsContainer = styled('div')({
 
 function RulesList() {
     const [rules, setRules] = useState([]);
-    const [editRule, setEditRule] = useState(null);
-    const [queryResult, setQueryResult] = useState(null);
-    const [isQueryDialogOpen, setIsQueryDialogOpen] = useState(false);
     const navigate = useNavigate(); 
 
     useEffect(() => {
         axios.get('http://localhost:3001/rules/list')
             .then(response => {
-                console.log("📥 Received rules list:", response.data.rules); // ✅ בדיקה אם הנתונים מגיעים
+                console.log("📥 Received rules list:", response.data.rules);
                 setRules(response.data.rules);
             })
             .catch(error => {
                 console.error('❌ Error fetching rules list:', error);
             });
     }, []);
-    console.log("🔍 State of rules:", rules);    
 
-    const handleEditClick = (rule) => {
-        setEditRule(rule);
-    };
-
-    const handleUpdateRule = async () => {
-        try {
-            const { id, rule_name, rule_info } = editRule;
-            const response = await axios.put(`http://localhost:3001/rules/update/${id}`, {
-                ruleName: rule_name,
-                ruleInfo: rule_info,
-            });
-
-            if (response.data.success) {
-                setRules((prevRules) => prevRules.map(r => (r.id === id ? editRule : r)));
-                setEditRule(null);
-                console.log('Rule updated successfully.');
-            } else {
-                console.log('Failed to update rule.');
+    const calculateConditionMatches = (result, conditions) => {
+        return conditions.map((condition) => {
+            if (condition.comparison === 'is_duplicate') {
+                // Special handling for duplicate check with multiple fields
+                const duplicateFields = Array.isArray(condition.field) 
+                    ? condition.field 
+                    : [condition.field];
+                
+                // Count duplicate records
+                const duplicateRecords = result.records.filter(record => {
+                    const duplicateCheck = duplicateFields.map(field => record[field]);
+                    const duplicateCount = result.records.filter(r => 
+                        duplicateFields.every(field => r[field] === record[field])
+                    ).length;
+                    return duplicateCount > 1;
+                });
+    
+                return { 
+                    condition, 
+                    count: duplicateRecords.length 
+                };
             }
-        } catch (error) {
-            console.error('Error updating rule:', error);
-        }
+    
+            // Regular condition matching (unchanged)
+            return {
+                condition,
+                count: result.records.filter(record => {
+                    const fieldValue = String(record[condition.field] || '').toLowerCase();
+                    const condValue = String(condition.value).toLowerCase();
+                    
+                    switch (condition.comparison) {
+                        case 'is_contain': return fieldValue.includes(condValue);
+                        case 'not_contain': return !fieldValue.includes(condValue);
+                        case 'equal': return fieldValue === condValue;
+                        case 'not_equal': return fieldValue !== condValue;
+                        case 'is_lower': return Number(fieldValue) < Number(condValue);
+                        case 'is_higher': return Number(fieldValue) > Number(condValue);
+                        default: return false;
+                    }
+                }).length
+            };
+        });
     };
 
     const handleDeleteClick = async (ruleId) => {
@@ -113,77 +125,106 @@ function RulesList() {
     };
 
     const handleFetchRuleDetails = async (rule) => {
+        // המר תנאים לפני השליחה
         const conditions = typeof rule.conditions === "string" 
             ? JSON.parse(rule.conditions) 
             : rule.conditions;
     
         const queryData = {
             selectedTable: rule.selected_table,
-            conditions,
+            conditions: conditions.map((condition, index) => ({
+                ...condition,
+                connector: index < conditions.length - 1 ? condition.connector : null,
+            })),
             ruleId: rule.id,
+            totalRecords: rule.total_records || 0
         };
     
+        // הדפס את פרטי השאילתה לבדיקה
+        console.log('🔍 נתוני שאילתה:', JSON.stringify(queryData, null, 2));
+    
         try {
-            const response = await axios.post('http://localhost:3001/query-db', queryData);
-            if (response.data.success) {
-                displayQueryResultInNewWindow({
-                    ruleName: rule.rule_name,
-                    ruleInfo: rule.rule_info,
-                    matchingRecords: response.data.matchingRecords,
-                    totalRecords: response.data.totalRecords,
-                    queryDate: response.data.queryDate,
-                    conditions,  // כעת `conditions` בטוח תקין
-                    records: response.data.records || [],
-                });
-            } else {
-                console.log('Failed to fetch query results.');
+            const response = await fetch('http://localhost:3001/query-db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queryData),
+            });
+    
+            // הדפס את סטטוס התגובה
+            console.log('סטטוס תגובה:', response.status);
+    
+            if (!response.ok) {
+                // קבל את טקסט השגיאה המלאה
+                const errorText = await response.text();
+                console.error('❌ תגובת שגיאה מלאה:', errorText);
+                return;
             }
+    
+            const result = await response.json();
+            showQueryResults(result, queryData, rule);
         } catch (error) {
-            console.error('Error fetching query results:', error);
+            // טיפול בשגיאות טעינה
+            console.error('❌ שגיאת טעינה:', error);
         }
     };
-    
-    
-        const displayQueryResultInNewWindow = (queryResult) => {
-        if (!Array.isArray(queryResult.conditions)) {
-            console.error("Conditions is not an array:", queryResult.conditions);
-            return;
-        }
-    
+
+    const showQueryResults = (result, queryData, rule) => {
+        if (!result?.records) return;
+
+        const conditionCounts = calculateConditionMatches(result, queryData.conditions);
+
         const newWindow = window.open('', '', 'width=800,height=600');
         newWindow.document.write(`
             <html>
             <head>
-              <title>Query Results</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                h1 { color: #333; }
-                p { font-size: 14px; color: #555; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th, td { padding: 10px; text-align: left; border: 1px solid #ddd; }
-                th { background-color: #f2f2f2; }
-              </style>
+                <title>Query Results</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; padding: 20px; }
+                    h1 { color: #333; }
+                    p { font-size: 14px; color: #555; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { padding: 10px; text-align: left; border: 1px solid #ddd; }
+                    th { background-color: #f2f2f2; }
+                    .result-info { margin-bottom: 20px; }
+                    .conditions-box { background-color: #eef; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+                    .condition-item { font-size: 14px; margin: 5px 0; }
+                    .matching-count { color: #2196F3; margin-left: 10px; }
+                </style>
             </head>
             <body>
-              <h1>Query Results</h1>
-              <p><strong>Rule Name:</strong> ${queryResult.ruleName}</p>
-              <p><strong>Rule Info:</strong> ${queryResult.ruleInfo}</p>
-              <p><strong>Records matching the query:</strong> ${queryResult.matchingRecords} / ${queryResult.totalRecords}</p>
-              <p><strong>Query executed at:</strong> ${queryResult.queryDate}</p>
-              <p><strong>Query Conditions:</strong></p>
-              <ul>
-                ${queryResult.conditions.map(cond => `<li>${cond.field} ${cond.comparison} '${cond.value}'</li>`).join('')}
-              </ul>
-              <table>
-                <tr>
-                  ${Object.keys(queryResult.records[0] || {}).map(col => `<th>${col}</th>`).join('')}
-                </tr>
-                ${queryResult.records.map(row => `
-                  <tr>
-                    ${Object.values(row).map(val => `<td>${val}</td>`).join('')}
-                  </tr>
-                `).join('')}
-              </table>
+                <h1>Query Results</h1>
+                <div class="result-info">
+                    <p><strong>Rule Name:</strong> ${rule.rule_name}</p>
+                    <p><strong>Rule Info:</strong> ${rule.rule_info}</p>
+                    <p><strong>Records matching the query:</strong> ${result.records.length} / ${queryData.totalRecords}</p>
+                    <p><strong>Query executed at:</strong> ${new Date().toLocaleString()}</p>
+                    <p><strong>Table Name:</strong> ${queryData.selectedTable}</p>
+                </div>
+
+                <div class="conditions-box">
+                    <h3>Applied Conditions:</h3>
+                    ${conditionCounts.map((item, index) => `
+                        <p class="condition-item">
+                            ${index + 1}. <strong>${Array.isArray(item.condition.field) ? item.condition.field.join(',') : item.condition.field}</strong> 
+                            ${item.condition.comparison} 
+                            ${item.condition.comparison === 'is_duplicate' ? '(Duplicate Check)' : `'${item.condition.value}'`}
+                            <span class="matching-count">(${item.count} records)</span>
+                        </p>
+                        ${item.condition.connector && index < conditionCounts.length - 1 
+                            ? `<p style="font-weight: bold; color: blue;"> ${item.condition.connector} </p>`
+                            : ''}`
+                    ).join('')}
+                </div>
+
+                ${result.records.length > 0 
+                    ? `<table>
+                        <tr>${Object.keys(result.records[0]).map(key => `<th>${key}</th>`).join('')}</tr>
+                        ${result.records.map(row => `
+                            <tr>${Object.values(row).map(value => `<td>${value}</td>`).join('')}</tr>
+                        `).join('')}
+                       </table>`
+                    : '<p>No records found.</p>'
+                }
             </body>
             </html>
         `);
@@ -211,7 +252,7 @@ function RulesList() {
                     {rules.map(rule => (
                         <TableRow key={rule.id}>
                             <StyledTableCell>
-                                <Tooltip title={rule.status === 1 ? 'ACTIVE' : 'INACTIVE'}>
+                                <Tooltip title={rule.status === 1 ? 'Active' : 'Inactive'}>
                                     <IconButton onClick={() => toggleStatus(rule)}>
                                         {rule.status === 1 ? (
                                             <CheckCircleIcon style={{ color: 'green', fontSize: '24px' }} />
