@@ -14,7 +14,12 @@ function AddRule() {
   const [selectedTable, setSelectedTable] = useState('');  
   const [ruleName, setRuleName] = useState('');
   const [ruleInfo, setRuleInfo] = useState('');
-  const [conditions, setConditions] = useState([{ field: '', comparison: 'equal', value: '' }]);
+  const [conditions, setConditions] = useState([{ 
+    field: '', 
+    comparison: 'equal', 
+    value: '',
+    connector: null
+  }]);
   const [columns, setColumns] = useState([]);  
   const [andOr, setAndOr] = useState('AND');  
   const [matchingRecords, setMatchingRecords] = useState(null);  
@@ -81,8 +86,13 @@ function AddRule() {
   
  
   const addCondition = () => {
-    setConditions([...conditions, { field: '', comparison: 'equal', value: '', connector: 'AND' }]);
-};
+    setConditions([...conditions, { 
+      field: '', 
+      comparison: 'equal', 
+      value: '',
+      connector: 'AND' 
+    }]);
+  };
 
 
 
@@ -125,20 +135,27 @@ const queryDuplicateRecords = async () => {
 
   const duplicateConditions = conditions.filter(cond => cond.comparison === 'is_duplicate');
   const otherConditions = conditions.filter(cond => cond.comparison !== 'is_duplicate');
-  const selectedFields = duplicateConditions[0].field.map(f => `\`${f}\``);
 
+  if (duplicateConditions.length === 0) return;
+
+  const selectedFields = duplicateConditions[0].field;
+
+  // יצירת שאילתת כפילויות
   const duplicateQuery = `
-    EXISTS (
+    SELECT * FROM \`${selectedTable}\` ft
+    WHERE EXISTS (
       SELECT 1 
       FROM \`${selectedTable}\` dup
-      WHERE ${selectedFields.map(field => `dup.${field} = ft.${field}`).join(' AND ')}
+      WHERE ${selectedFields.map(f => `dup.\`${f}\` = ft.\`${f}\``).join(' AND ')}
       GROUP BY ${selectedFields.join(', ')}
       HAVING COUNT(*) > 1
-    )`;
+    )
+  `;
 
+  // הוספת תנאים נוספים
   const otherConditionsQuery = otherConditions.map(cond => {
     const field = `LOWER(ft.\`${cond.field}\`)`;
-    const value = cond.value.toLowerCase();
+    const value = String(cond.value).toLowerCase();
       
     switch (cond.comparison) {
       case 'is_contain': return `${field} LIKE '%${value}%'`;
@@ -151,25 +168,29 @@ const queryDuplicateRecords = async () => {
     }
   }).filter(Boolean);
 
-  let query = `
-    SELECT DISTINCT ft.*
-    FROM \`${selectedTable}\` ft
-    WHERE `;
-
-  if (conditions.some(c => c.connector === 'OR')) {
-    query += `(${duplicateQuery}) OR (${otherConditionsQuery.join(' OR ')})`;
-  } else {
-    query += `${duplicateQuery} AND (${otherConditionsQuery.join(' AND ')})`;
+  // בניית השאילתה הסופית
+  let finalQuery = duplicateQuery;
+  
+  // הוספת תנאים נוספים רק אם קיימים
+  if (otherConditionsQuery.length > 0) {
+    const connector = conditions.some(c => c.connector === 'OR') ? ' OR ' : ' AND ';
+    finalQuery += ` AND (${otherConditionsQuery.join(connector)})`;
   }
 
-  query += ` ORDER BY ft.ID`;
-  console.log('Final query:', query);
+  // הסרת ORDER BY כאשר אין צורך
+  finalQuery += ` ORDER BY ft.ID`;
+
+  console.log('Final duplicate query:', finalQuery);
 
   try {
     const response = await fetch('http://localhost:3001/query-duplicates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tableName: selectedTable, query, debug: true })
+      body: JSON.stringify({ 
+        tableName: selectedTable, 
+        query: finalQuery, 
+        debug: true 
+      })
     });
 
     if (!response.ok) throw new Error('Query failed');
@@ -184,11 +205,14 @@ const queryDuplicateRecords = async () => {
         selectedTable, 
         selectedFields,
         conditions,
-        totalRecords: result.totalRecords  // העברת totalRecords לפונקציית התצוגה
+        totalRecords: result.totalRecords
       });
+      setQueryExecuted(true);
     }
   } catch (error) {
     console.error('Query error:', error);
+    // הוספת טיפול בשגיאה, למשל הצגת הודעת שגיאה למשתמש
+    alert(`שגיאה בביצוע השאילתה: ${error.message}`);
   }
 };
 
@@ -284,46 +308,63 @@ const showQueryResults = async (result, queryData) => {
   if (!result?.records) return;
 
   const calculateConditionMatches = async (condition) => {
-      if (condition.comparison === 'is_duplicate') {
-          try {
-              const duplicateQuery = `
-                  SELECT * FROM ${queryData.selectedTable} 
-                  WHERE EXISTS (
-                      SELECT 1 FROM ${queryData.selectedTable} dup
-                      WHERE ${condition.field.map(f => `dup.\`${f}\` = ${queryData.selectedTable}.\`${f}\``).join(' AND ')}
-                      GROUP BY ${condition.field.map(f => `\`${f}\``).join(', ')}
-                      HAVING COUNT(*) > 1
-                  )`;
-              
-              const response = await fetch('http://localhost:3001/query-duplicates', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ tableName: queryData.selectedTable, query: duplicateQuery })
-              });
-              const data = await response.json();
-              return data.records.length;
-          } catch (error) {
-              console.error('Error calculating duplicates:', error);
-              return 0;
-          }
-      }
+    if (condition.comparison === 'is_duplicate') {
+        try {
+            const duplicateQuery = `
+                SELECT * FROM ${queryData.selectedTable} 
+                WHERE EXISTS (
+                    SELECT 1 FROM ${queryData.selectedTable} dup
+                    WHERE ${condition.field.map(f => `dup.\`${f}\` = ${queryData.selectedTable}.\`${f}\``).join(' AND ')}
+                    GROUP BY ${condition.field.map(f => `\`${f}\``).join(', ')}
+                    HAVING COUNT(*) > 1
+                )`;
+            
+            const response = await fetch('http://localhost:3001/query-duplicates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tableName: queryData.selectedTable, query: duplicateQuery })
+            });
+            const data = await response.json();
+            return data.records.length;
+        } catch (error) {
+            console.error('Error calculating duplicates:', error);
+            return 0;
+        }
+    }
 
-      // חישוב תנאים רגילים
-      return result.records.filter(record => {
-          const fieldValue = String(record[condition.field] || '').toLowerCase();
-          const condValue = String(condition.value).toLowerCase();
-          
-          switch (condition.comparison) {
-              case 'is_contain': return fieldValue.includes(condValue);
-              case 'not_contain': return !fieldValue.includes(condValue);
-              case 'equal': return fieldValue === condValue;
-              case 'not_equal': return fieldValue !== condValue;
-              case 'is_higher': return Number(fieldValue) > Number(condValue);
-              case 'is_lower': return Number(fieldValue) < Number(condValue);
-              default: return false;
-          }
-      }).length;
-  };
+    if (condition.comparison === 'count_occurrence') {
+        // טיפול בספירת הופעות
+        const fields = condition.field;
+        
+        // יצירת מפה של הרשומות לפי השדות שנבחרו
+        const groupedRecords = result.records.reduce((acc, record) => {
+            const key = fields.map(field => record[field]).join('|');
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, {});
+
+        // ספירת הרשומות עם יותר מהופעה אחת
+        const duplicateCount = Object.values(groupedRecords).filter(count => count > 1).length;
+        
+        return duplicateCount;
+    }
+
+    // חישוב תנאים רגילים
+    return result.records.filter(record => {
+        const fieldValue = String(record[condition.field] || '').toLowerCase();
+        const condValue = String(condition.value).toLowerCase();
+        
+        switch (condition.comparison) {
+            case 'is_contain': return fieldValue.includes(condValue);
+            case 'not_contain': return !fieldValue.includes(condValue);
+            case 'equal': return fieldValue === condValue;
+            case 'not_equal': return fieldValue !== condValue;
+            case 'is_higher': return Number(fieldValue) > Number(condValue);
+            case 'is_lower': return Number(fieldValue) < Number(condValue);
+            default: return false;
+        }
+    }).length;
+};
 
   // חישוב מספרי הרשומות לכל התנאים
   const conditionCounts = await Promise.all(
@@ -389,6 +430,37 @@ const showQueryResults = async (result, queryData) => {
   `);
 };
 
+/* const renderValueField = (condition, index) => {
+  switch (condition.comparison) {
+    case 'count_occurrence':
+      return (
+        <TextField
+          label="Fields to Count"
+          select
+          multiple
+          fullWidth
+          value={condition.field || []}
+          onChange={(e) => handleConditionChange(index, 'field', e.target.value)}
+        >
+          {columns.map((column) => (
+            <MenuItem key={column} value={column}>
+              {column}
+            </MenuItem>
+          ))}
+        </TextField>
+      );
+
+    default:
+      return (
+        <TextField
+          label="Value"
+          fullWidth
+          value={condition.value || ''}
+          onChange={(e) => handleConditionChange(index, 'value', e.target.value)}
+        />
+      );
+  }
+}; */
 
   return (
     <Box sx={{ margin: '20px', padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '10px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)' }}>
@@ -443,10 +515,18 @@ const showQueryResults = async (result, queryData) => {
     select
     fullWidth
     SelectProps={{
-      multiple: condition.comparison === 'is_duplicate', // ריבוי בחירות רק אם זה 'IS DUPLICATE'
+      multiple: condition.comparison === 'is_duplicate' || condition.comparison === 'count_occurrence',
+      value: (condition.comparison === 'is_duplicate' || condition.comparison === 'count_occurrence')
+        ? (Array.isArray(condition.field) ? condition.field : []) 
+        : condition.field
     }}
     value={condition.field}
-    onChange={(e) => handleConditionChange(index, 'field', e.target.value)}
+    onChange={(e) => {
+      const newValue = (condition.comparison === 'is_duplicate' || condition.comparison === 'count_occurrence')
+        ? (Array.isArray(e.target.value) ? e.target.value : [e.target.value])
+        : e.target.value;
+      handleConditionChange(index, 'field', newValue);
+    }}
   >
     {columns.map((column) => (
       <MenuItem key={column} value={column}>
@@ -472,10 +552,11 @@ const showQueryResults = async (result, queryData) => {
               <MenuItem value="is_lower">is lower</MenuItem>
               <MenuItem value="is_higher">is higher</MenuItem>
               <MenuItem value="is_duplicate">is duplicate</MenuItem>
+              <MenuItem value="count_occurrence">count occurrence</MenuItem>
             </TextField>
           </Grid>
 
-          {condition.comparison !== 'is_duplicate' && (
+          {condition.comparison !== 'is_duplicate' && condition.comparison !== 'count_occurrence' && (
   <Grid item xs={3}>
     <TextField
       label="Value"
