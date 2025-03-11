@@ -44,7 +44,20 @@ const RuleDescription = ({ conditions = [] }) => {
           return `Find records where ${condition.field} is less than ${condition.value}`;
         case 'count_occurrence':
           return `Count repeated entries in: ${Array.isArray(condition.field) ? condition.field.join(', ') : condition.field}`;
-        default:
+        case 'fields_equal':
+            if (Array.isArray(condition.field) && condition.field.length >= 2) {
+              const fieldPairs = [];
+              for (let i = 0; i < condition.field.length - 1; i += 2) {
+                if (i + 1 < condition.field.length) {
+                  fieldPairs.push(`${condition.field[i]} = ${condition.field[i+1]}`);
+                }
+              }
+              return `Compare fields within each record: ${fieldPairs.join(' AND ')}`;
+            }
+            return 'Compare equality between fields';
+        case 'related_count':
+              return `Count records where ${condition.field} has at least ${condition.value || '1'} related records in ${condition.relatedTable}.${condition.relatedField}`;
+          default:
           return 'Custom condition';
       }
     });
@@ -99,6 +112,25 @@ const RuleDescription = ({ conditions = [] }) => {
           example: 'Detects variations like "document.doc" and "document.pdf"',
           searchKeywords: ['same name', 'extension', 'file variations']
         };
+      case 'same_ext_diff_names':
+        return {
+            title: 'Same Extension, Different Names',
+            description: `Find files with ${condition.field} having the same extension but different base names`,
+            example: 'Detects variations like "report1.pdf" and "summary2.pdf"',
+            searchKeywords: ['same extension', 'different names', 'file variations']
+        };
+      case 'fields_equal':
+          return {
+              title: 'Fields Equality Check',
+              description: `Compare values between fields: ${
+                  Array.isArray(condition.field) && condition.field.length >= 2 ? 
+                  condition.field.map((f, i) => (i % 2 === 0 && i < condition.field.length - 1) ? 
+                      `${f} = ${condition.field[i+1]}` : '').filter(Boolean).join(' AND ') : 
+                  condition.field
+              }`,
+              example: 'Checks if specified field pairs have the same values within each record',
+              searchKeywords: ['fields equal', 'same value', 'compare fields']
+          };
       case 'is_contain':
         return {
           title: 'Contains Text',
@@ -147,6 +179,13 @@ const RuleDescription = ({ conditions = [] }) => {
           description: `Count repetitions of values in ${Array.isArray(condition.field) ? condition.field.join(', ') : condition.field}`,
           example: 'Identifies fields with multiple matching entries',
           searchKeywords: ['count', 'repeat', 'frequency']
+        };
+      case 'related_count':
+          return {
+            title: 'Related Records Counter',
+            description: `Count records in table "${condition.relatedTable}" where field "${condition.relatedField}" matches this record's "${condition.field}" field`,
+            example: `Find records with at least ${condition.value || '1'} related entries`,
+            searchKeywords: ['count', 'related', 'foreign key', 'join']
         };
       default:
         return {

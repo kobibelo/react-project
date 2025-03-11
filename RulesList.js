@@ -5,10 +5,16 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import { styled } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
+import {
+    DynamicFeedRounded,  // Icon for displaying query results
+    TuneRounded,         // Icon for editing
+    DeleteSweepRounded   // Icon for deletion
+} from '@mui/icons-material';
+
 
 const StyledTableCell = styled(TableCell)({
     padding: '16px',
-    textAlign: 'center',
+    textAlign: 'left',
 });
 
 const StyledTableHeadCell = styled(TableCell)({
@@ -268,12 +274,33 @@ function RulesList() {
                             <StyledTableCell>{rule.matching_records !== null ? rule.matching_records : 'N/A'} / {rule.total_records !== null ? rule.total_records : 'N/A'}</StyledTableCell>
                             <StyledTableCell>{new Date(rule.last_update).toLocaleString()}</StyledTableCell>
                             <StyledTableCell>
-                                <ActionsContainer>
-                                    <Button variant="contained" onClick={() => handleFetchRuleDetails(rule)}>Query DB</Button>
-                                    <Button variant="contained" color="primary" onClick={() => navigate(`/rules/update/${rule.id}`)}>Edit</Button>
-                                    <InactiveButton variant="contained" onClick={() => handleDeleteClick(rule.id)}>Delete</InactiveButton>
-                                </ActionsContainer>
-                            </StyledTableCell>
+                            <ActionsContainer>
+                                <Tooltip title="Display Query Results">
+                                    <IconButton 
+                                        color="primary" 
+                                        onClick={() => handleFetchRuleDetails(rule)}
+                                    >
+                                        <DynamicFeedRounded style={{ color: '#1976d2' }} />
+                                    </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Edit Rule">
+                                    <IconButton 
+                                        color="primary" 
+                                        onClick={() => navigate(`/rules/update/${rule.id}`)}
+                                    >
+                                        <TuneRounded style={{ color: '#4caf50' }} />
+                                    </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Delete Rule">
+                                    <IconButton 
+                                        color="error" 
+                                        onClick={() => handleDeleteClick(rule.id)}
+                                    >
+                                        <DeleteSweepRounded style={{ color: '#f44336' }} />
+                                    </IconButton>
+                                </Tooltip>
+                            </ActionsContainer>
+                        </StyledTableCell>
                         </TableRow>
                     ))}
                 </TableBody>

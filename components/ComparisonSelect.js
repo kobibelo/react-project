@@ -45,9 +45,25 @@ const ComparisonSelect = ({ value, onChange }) => {
       description: 'Finds files with the same name but different extensions (e.g., file.doc and file.pdf). Suitable for fields containing file names'
     },
     {
+      value: 'same_ext_diff_names',
+      label: 'same extension, different names',
+      description: 'Finds files with the same extension but different base names (e.g., report1.pdf and summary2.pdf)'
+    },
+    {
+      value: 'fields_equal',
+      label: 'fields are equal',
+      description: 'Compare if values in different fields are equal within the same record'
+    },
+    {
       value: 'count_occurrence',
       label: 'count occurrences',
       description: 'Counts how many times a value appears in the selected field'
+    }
+    ,
+    {
+      value: 'related_count',
+      label: 'count related records',
+      description: 'Counts records in a related table that reference this record'
     }
   ];
 

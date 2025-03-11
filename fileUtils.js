@@ -1,5 +1,7 @@
 // fileUtils.js
 
+/* eslint-disable no-undef */
+
 export const getFileNameAndExt = (filename) => {
     if (!filename || typeof filename !== 'string') {
         console.log('Invalid filename:', filename);
@@ -84,6 +86,52 @@ export const calculateConditionMatches = async (condition, records) => {
         return matchingRecords.size;
     }
 
+    if (condition.comparison === 'same_ext_diff_names') {
+        const fields = Array.isArray(condition.field) ? condition.field : [condition.field];
+        
+        const extensionGroups = {};
+        
+        records.forEach((record) => {
+            fields.forEach(field => {
+                const fileName = record[field];
+                const [name, ext] = getFileNameAndExt(fileName);
+    
+                if (!extensionGroups[ext]) {
+                    extensionGroups[ext] = new Set();
+                }
+                extensionGroups[ext].add(name);
+            });
+        });
+    
+        const differentNameGroups = Object.entries(extensionGroups)
+            .filter(([_, names]) => names.size > 1);
+    
+        return differentNameGroups.reduce((sum, [_, names]) => sum + names.size, 0);
+    }
+
+    if (condition.comparison === 'cross_fields_match') {
+        const fields = Array.isArray(condition.field) ? condition.field : [condition.field];
+        
+        if (fields.length < 2) {
+            return 0; // לפחות שני שדות נדרשים
+        }
+    
+        const matchingRecords = new Set();
+    
+        records.forEach((record, index) => {
+            // בדיקת זהות בין כל הצירופים של השדות
+            for (let i = 0; i < fields.length; i++) {
+                for (let j = i + 1; j < fields.length; j++) {
+                    if (record[fields[i]] === record[fields[j]]) {
+                        matchingRecords.add(index);
+                    }
+                }
+            }
+        });
+    
+        return matchingRecords.size;
+    }  
+
     if (condition.comparison === 'is_duplicate') {
         const fields = Array.isArray(condition.field) ? condition.field : [condition.field];
         const keyMap = new Map();
@@ -103,7 +151,39 @@ export const calculateConditionMatches = async (condition, records) => {
         console.log(`Found ${duplicates.size} records with duplicates`);
         return duplicates.size;
     }
+    if (condition.comparison === 'fields_equal') {
+        const fields = Array.isArray(condition.field) ? condition.field : [];
+        
+        if (fields.length < 2) {
+            return 0;
+        }
+        
+        let matchCount = 0;
+        
+        records.forEach(record => {
+            let isMatch = true;
+            
+            for (let i = 0; i < fields.length - 1; i += 2) {
+                if (i + 1 < fields.length) {
+                    if (record[fields[i]] !== record[fields[i+1]]) {
+                        isMatch = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (isMatch) {
+                matchCount++;
+            }
+        });
+        
+        return matchCount;
+    }
 
+    if (condition.comparison === 'related_count') {
+        // החזר את סך כל רשומות ההיסטוריה במקום רק את מספר הרשומות
+        return records.reduce((sum, record) => sum + (parseInt(record.historyCount) || 0), 0);
+    }
     // חישוב תנאים רגילים
     return records.filter(record => {
         const fieldValue = String(record[condition.field] || '').toLowerCase();
@@ -122,42 +202,51 @@ export const calculateConditionMatches = async (condition, records) => {
     }).length;
 };
 
+export const calculateSameExtDifferentNames = (records, fields) => {
+    const extensionGroups = {};
+
+    records.forEach((record) => {
+        fields.forEach((field) => {
+            const fileName = record[field];
+            const [name, ext] = getFileNameAndExt(fileName);
+
+            if (!extensionGroups[ext]) {
+                extensionGroups[ext] = new Set();
+            }
+            extensionGroups[ext].add(name);
+        });
+    });
+
+    const differentNameResults = Object.entries(extensionGroups)
+        .filter(([_, names]) => names.size > 1)
+        .map(([ext, names]) => ({
+            extension: ext,
+            nameCount: names.size,
+            names: Array.from(names)
+        }));
+
+    return differentNameResults.length;
+};
+
 export const showQueryResults = async (result, queryData) => {
-    if (!result?.records) {
+    if (!result) {
+        console.error('Result object is undefined');
+        return;
+    }
+    if (!result.records) {
         console.error('No records provided');
         return;
     }
 
+    // בדיקה אם יש תכונת related_count בלפחות רשומה אחת
+    const hasRelatedCounts = result.records.some(record => 'related_count' in record);
+
+    // פתיחת חלון חדש להצגת התוצאות - חשוב לפתוח את החלון לפני שמשתמשים בו
+    const newWindow = window.open('', '', 'width=1000,height=800');
+
     // חישוב קבוצות עבור כל התנאים
     const conditionGroupSummaries = await Promise.all(
         queryData.conditions.map(async (condition) => {
-            // תנאי שם קבצים זהה עם סיומות שונות
-            if (condition.comparison === 'same_name_diff_ext') {
-                const fileGroups = {};
-                result.records.forEach(record => {
-                    const [name1, ext1] = getFileNameAndExt(record.NameFile1 || '');
-                    const [name2, ext2] = getFileNameAndExt(record.NameFile2 || '');
-                    
-                    if (name1 === name2 && ext1 !== ext2) {
-                        if (!fileGroups[name1]) {
-                            fileGroups[name1] = new Set();
-                        }
-                        fileGroups[name1].add(ext1);
-                        fileGroups[name1].add(ext2);
-                    }
-                });
-
-                return {
-                    type: 'sameName',
-                    comparison: condition.comparison,
-                    groups: Object.entries(fileGroups)
-                        .filter(([_, extensions]) => extensions.size > 1)
-                        .map(([name, extensions]) => ({
-                            name,
-                            extensions: Array.from(extensions)
-                        }))
-                };
-            }
 
             // תנאי כפילויות
             if (condition.comparison === 'is_duplicate') {
@@ -186,6 +275,79 @@ export const showQueryResults = async (result, queryData) => {
                         .filter(group => group.records.length > 1)
                         .map(group => ({
                             fields: group.fields,
+                            count: group.records.length
+                        }))
+                };
+            }
+
+            // תנאי Same Extension, Different Names - חדש
+            if (condition.comparison === 'same_ext_diff_names') {
+                const extensionGroups = {};
+                
+                result.records.forEach((record) => {
+                    const fileName = record[condition.field];
+                    const [name, ext] = getFileNameAndExt(fileName);
+
+                    if (!extensionGroups[ext]) {
+                        extensionGroups[ext] = new Set();
+                    }
+                    extensionGroups[ext].add(name);
+                });
+
+                return {
+                    type: 'sameExtDiffNames',
+                    comparison: condition.comparison,
+                    groups: Object.entries(extensionGroups)
+                        .filter(([_, names]) => names.size > 1)
+                        .map(([ext, names]) => ({
+                            extension: ext,
+                            names: Array.from(names),
+                            count: names.size
+                        }))
+                };
+            }
+
+            if (condition.comparison === 'related_count') {
+                // בדיקה אם יש קבוצות מוכנות מהשרת
+                if (result.relatedGroups && Array.isArray(result.relatedGroups) && result.relatedGroups.length > 0) {
+                    // השתמש בקבוצות המוכנות מהשרת
+                    return {
+                        type: 'related_count',
+                        comparison: condition.comparison,
+                        groups: result.relatedGroups.map(group => ({
+                            name: group.name || 0,  // מספר הרשומות המקושרות
+                            count: group.count || 0  // מספר הרשומות בקבוצה
+                        }))
+                    };
+                }
+                            
+                // אם אין קבוצות מוכנות, נחשב אותן כאן
+                const relatedTable = condition.relatedTable;
+                const selectedColumns = condition.selectedRelatedColumns || [];
+                const localField = Array.isArray(condition.field) ? condition.field[0] : condition.field;
+                const foreignField = condition.relatedField;
+            
+                const groups = {};
+                
+                result.records.forEach(record => {
+                    const historyCount = record.historyCount || 0;
+                    const key = `${historyCount} related records`;
+                    
+                    if (!groups[key]) {
+                        groups[key] = {
+                            count: historyCount,
+                            records: []
+                        };
+                    }
+                    groups[key].records.push(record);
+                });
+            
+                return {
+                    type: 'related_count',
+                    comparison: condition.comparison,
+                    groups: Object.values(groups)
+                        .map(group => ({
+                            name: group.count,
                             count: group.records.length
                         }))
                 };
@@ -236,7 +398,7 @@ export const showQueryResults = async (result, queryData) => {
         })
     );
 
-    const newWindow = window.open('', '', 'width=1000,height=800');
+    // כתיבת ה-HTML לחלון החדש
     newWindow.document.write(`
         <html>
         <head>
@@ -342,6 +504,35 @@ export const showQueryResults = async (result, queryData) => {
                 tr:nth-child(even) { 
                     background-color: #f8f9fa;
                 }
+                .highlight-count {
+                    background-color: #e3f2fd;
+                    font-weight: bold;
+                    color: #0d47a1;
+                }
+                .summary-stats {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 15px;
+                    margin: 20px 0;
+                }
+                .summary-stats > div {
+                    background-color: #e3f2fd;
+                    padding: 10px;
+                    border-radius: 8px;
+                    text-align: center;
+                }
+                .count-groups {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                    gap: 10px;
+                    margin-top: 15px;
+                }
+                .count-group {
+                    background-color: #f5f5f5;
+                    padding: 8px;
+                    border-radius: 4px;
+                    text-align: center;
+                }
             </style>
             <script>
                 function toggleCollapse(elementId) {
@@ -362,19 +553,36 @@ export const showQueryResults = async (result, queryData) => {
         <body>
             <h1>Query Results</h1>
             <div class="result-info">
-                <p><strong>Records matching the query:</strong> ${result.records.length} / ${result.totalRecords || 'N/A'}</p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="border: 1px solid #e0e0e0; padding: 10px; border-radius: 8px;">
+                        <h3 style="margin-top: 0; color: #1976d2; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px;">Main Query</h3>
+                        <p><strong>Records matching the query:</strong> ${result.records.length} / ${result.totalRecords || 'N/A'}</p>
+                        <p><strong>Table Name:</strong> ${queryData.selectedTable}</p>
+                    </div>
+                    
+                    ${result.relatedTable ? `
+                    <div style="border: 1px solid #e0e0e0; padding: 10px; border-radius: 8px;">
+                        <h3 style="margin-top: 0; color: #1976d2; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px;">Related Records</h3>
+                        <p><strong>Records matching the query:</strong> ${result.totalHistoryRecords || 0} / ${result.totalRelatedRecords || 'N/A'}</p>
+                        <p><strong>Table Name:</strong> ${result.relatedTable}</p>
+                    </div>
+                    ` : ''}
+                </div>
                 <p><strong>Query executed at:</strong> ${new Date().toLocaleString()}</p>
-                <p><strong>Table Name:</strong> ${queryData.selectedTable}</p>
             </div>
 
             ${conditionGroupSummaries.map((summary, index) => 
-                summary.groups.length > 0 ? `
+                summary.groups && summary.groups.length > 0 ? `
                     <div class="collapsible" onclick="toggleCollapse('summary-section-${index}')">
                         <h3 style="margin: 0;">
                             ${summary.type === 'duplicate' ? 
                                 `Duplicate Groups (${summary.groups.length} groups found)` :
                              summary.type === 'sameName' ? 
                                 `Files with Same Name but Different Extensions (${summary.groups.length} groups found)` :
+                             summary.type === 'sameExtDiffNames' ?
+                                `Files with Same Extension but Different Names (${summary.groups.length} groups found)` :
+                             summary.type === 'related_count' ?
+                                `Related Records Groups (${summary.groups.length} groups found)` :
                                 `Condition Groups (${summary.groups.length} groups found)`}
                         </h3>
                         <span id="summary-section-${index}-arrow" class="arrow">▼</span>
@@ -397,6 +605,24 @@ export const showQueryResults = async (result, queryData) => {
                                     <strong>Extensions:</strong> ${group.extensions.join(', ')}
                                 </div>
                             `).join('') :
+                         summary.type === 'sameExtDiffNames' ?
+                            summary.groups.map(group => `
+                                <div class="file-group">
+                                    <strong>Extension:</strong> ${group.extension}
+                                    <br>
+                                    <strong>Names:</strong> ${group.names.join(', ')}
+                                    <br>
+                                    <strong>Count:</strong> ${group.count}
+                                </div>
+                            `).join('') :
+                         summary.type === 'related_count' ?
+                            summary.groups.map(group => `
+                                <div class="file-group">
+                                    <strong>Related Records Count:</strong> ${group.name}
+                                    <br>
+                                    <strong>Number of Records:</strong> ${group.count}
+                                </div>
+                            `).join('') :
                             summary.groups.map(group => `
                                 <div class="file-group">
                                     <strong>Group:</strong> ${group.name}
@@ -416,24 +642,81 @@ export const showQueryResults = async (result, queryData) => {
                         ${item.condition.comparison} 
                         ${item.condition.comparison === 'same_name_diff_ext' ? '(Same name, different extension)' : 
                           item.condition.comparison === 'is_duplicate' ? '(Duplicate Check)' : 
-                          `'${item.condition.value}'`}
-                        <span class="matching-count">${item.count} records</span>
-                    </div>
-                    ${item.condition.connector && index < conditionCounts.length - 1 
-                        ? `<div class="connector">${item.condition.connector}</div>`
-                        : ''}`
-                ).join('')}
+                          item.condition.comparison === 'same_ext_diff_names' ? '(Same extension, different names)' :
+                          item.condition.comparison === 'fields_equal' ? 
+                                    (Array.isArray(item.condition.field) && item.condition.field.length >= 2 ? 
+                                        '(' + Array.from({ length: Math.floor(item.condition.field.length / 2) }, (_, i) => 
+                                            `${item.condition.field[i*2]} = ${item.condition.field[i*2+1]}`
+                                        ).join(' AND ') + ')' : 
+                                    '') :
+                          item.condition.comparison === 'related_count' ?
+                                    `(Count related records from ${item.condition.relatedTable}.${item.condition.relatedField}, min: ${item.condition.value || '1'})` :
+                                `'${item.condition.value}'`}
+                                <span class="matching-count">${item.count} records</span>
+                            </div>
+                            ${item.condition.connector && index < conditionCounts.length - 1 
+                                ? `<div class="connector">${item.condition.connector}</div>`
+                                : ''}`
+                        ).join('')}
             </div>
 
-            ${result.records.length > 0 
-                ? `<table>
-                    <tr>${Object.keys(result.records[0]).map(key => `<th>${key}</th>`).join('')}</tr>
+            ${result.records.length > 0 ? `
+                <table>
+                    <tr>
+                        ${Object.keys(result.records[0])
+                            .map(key => `<th>${key}</th>`)
+                            .join('')}
+                    </tr>
                     ${result.records.map(row => `
-                        <tr>${Object.values(row).map(value => `<td>${value}</td>`).join('')}</tr>
+                        <tr>
+                            ${Object.entries(row).map(([key, value]) => 
+                                key === 'related_count' ? 
+                                    `<td class="${parseInt(value) > 0 ? 'highlight-count' : ''}">${value}</td>` :
+                                    `<td>${value}</td>`
+                            ).join('')}
+                        </tr>
                     `).join('')}
-                  </table>`
-                : '<p>No records found.</p>'
-            }
+                </table>
+            ` : '<p>No records found.</p>'}
+
+            ${hasRelatedCounts && result.relatedTable ? `
+                <div class="collapsible" onclick="toggleCollapse('related-counts-summary')">
+                    <h3 style="margin: 0;">Related Records Summary</h3>
+                    <span id="related-counts-summary-arrow" class="arrow">▼</span>
+                </div>
+                <div id="related-counts-summary" class="collapse-content">
+                    <p>Showing counts from table <strong>${result.relatedTable}</strong> where field <strong>${result.relatedField}</strong> matches <strong>${result.localField}</strong> in the main table.</p>
+                    
+                    <div class="summary-stats">
+                        <div>
+                            <strong>Total Records:</strong> ${result.records.length}
+                        </div>
+                        <div>
+                            <strong>Records with Related Entries:</strong> ${result.records.filter(r => parseInt(r.related_count) > 0).length}
+                        </div>
+                        <div>
+                            <strong>Total Related Records:</strong> ${result.records.reduce((sum, r) => sum + parseInt(r.related_count || 0), 0)}
+                        </div>
+                        <div>
+                            <strong>Average per Record:</strong> ${(result.records.reduce((sum, r) => sum + parseInt(r.related_count || 0), 0) / result.records.length).toFixed(2)}
+                        </div>
+                    </div>
+                    
+                    <h4>Records by Count:</h4>
+                    <div class="count-groups">
+                        ${Object.entries(result.records.reduce((groups, record) => {
+                            const count = parseInt(record.related_count || 0);
+                            if (!groups[count]) groups[count] = 0;
+                            groups[count]++;
+                            return groups;
+                        }, {})).sort((a, b) => parseInt(a[0]) - parseInt(b[0])).map(([count, number]) => `
+                            <div class="count-group">
+                                <strong>${count} related records:</strong> ${number} main records
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
         </body>
         </html>
     `);
