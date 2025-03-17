@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Card, Tooltip, CardContent, Grid, TextField, MenuItem, Button,
-   Box, IconButton, Typography,  ListItemText  } from '@mui/material'; 
+   Box, IconButton, Typography, ListItemText } from '@mui/material'; 
 import Checkbox from '@mui/material/Checkbox';
 import { Add, Remove } from '@mui/icons-material'; 
 import { useParams, useNavigate } from 'react-router-dom';
 import ComparisonSelect from './components/ComparisonSelect';
 import RuleDescription from './components/RuleDescription';
 import ConditionRow from './ConditionRow';
-// ייבוא הקומפוננטה החדשה
+// ייבוא הקומפוננטות החדשות
 import RuleForm from './components/RuleForm';
+import OptimizationRecommendations from './components/OptimizationRecommendations';
 import { showQueryResults, getFileNameAndExt, calculateSameNameDiffExtMatches } from './fileUtils';
 
 function AddRule() {
@@ -34,8 +35,10 @@ function AddRule() {
   const [queryExecuted, setQueryExecuted] = useState(false);
   const [relatedTables, setRelatedTables] = useState([]);
   const [relatedFields, setRelatedFields] = useState([]);
+  // משתנה חדש לאחסון נתוני אופטימיזציה
+  const [optimizationData, setOptimizationData] = useState(null);
 
-  // טעינת נתוני חוק קיים במצב עריכה
+  // טעינת נתוני חוק קיים במצב עריכה עם הוספת קריאה לנתוני אופטימיזציה
   useEffect(() => {
     if (isEditMode) {
         axios.get(`http://localhost:3001/rules/${ruleId}`)
@@ -44,6 +47,7 @@ function AddRule() {
                 setRuleName(rule.rule_name);
                 setRuleInfo(rule.rule_info);
                 setSelectedTable(rule.selected_table);
+                setOptimizationData(rule.optimizationData || null);
 
                 let parsedConditions;
                 try {
@@ -119,6 +123,23 @@ function AddRule() {
         });
     }
   }, [conditions]);
+
+  // טעינת שדות של טבלה קשורה כשהיא נבחרת
+useEffect(() => {
+  const executionCountCondition = conditions.find(c => c.comparison === 'execution_count');
+  
+  if (executionCountCondition && executionCountCondition.relatedTable) {
+    axios.post('http://localhost:3001/fetch-table-data', { 
+      tableName: executionCountCondition.relatedTable 
+    })
+    .then(response => {
+      setRelatedFields(Object.keys(response.data.tableData[0]));
+    })
+    .catch(error => {
+      console.error('Error fetching related table fields:', error);
+    });
+  }
+}, [conditions]);
  
   const addCondition = () => {
     setConditions([...conditions, { 
@@ -272,6 +293,42 @@ function AddRule() {
       setMatchingRecords(result.matchingRecords);
       setTotalRecords(result.totalRecords);
       setQueryDate(new Date().toLocaleString());
+      
+      // בקשה לנתוני אופטימיזציה מהשרת
+      try {
+        // יצירת אובייקט חוק זמני לצורך בקשת נתוני אופטימיזציה
+        const tempRule = {
+          rule_name: ruleName,
+          rule_info: ruleInfo,
+          matching_records: result.matchingRecords,
+          total_records: result.totalRecords,
+          conditions: conditions
+        };
+        
+        // שימוש בשירות האופטימיזציה מצד הלקוח או בקשה מהשרת
+        const optResponse = await axios.post('http://localhost:3001/analyze-optimization', tempRule);
+        if (optResponse.data && optResponse.data.success) {
+          setOptimizationData(optResponse.data.optimizationData);
+        }
+      } catch (optError) {
+        console.error('❌ Error fetching optimization data:', optError);
+        // אם יש שגיאה, נחשב לפחות את האחוז הבסיסי
+        const impactPercentage = result.totalRecords > 0 
+          ? ((result.matchingRecords / result.totalRecords) * 100).toFixed(2)
+          : 0;
+          
+        setOptimizationData({
+          quantitativeImpact: {
+            matchingRecords: result.matchingRecords,
+            totalRecords: result.totalRecords,
+            impactPercentage
+          },
+          optimizationPotential: impactPercentage > 50 ? 0.9 : impactPercentage > 30 ? 0.7 : impactPercentage > 10 ? 0.5 : 0.2,
+          recommendations: ['Initial performance analysis required'],
+          businessRisk: impactPercentage > 50 ? 'High' : impactPercentage > 30 ? 'Medium' : 'Low'
+        });
+      }
+      
       showQueryResults(result, queryData);
     } catch (error) {
       console.error('❌ Error querying the database:', error);
@@ -293,10 +350,20 @@ function AddRule() {
         tables={tables}
       />
 
-      {/* שאר הקוד נשאר זהה */}
-      {conditions.length > 0 && (
-        <RuleDescription conditions={conditions} />
-      )}
+     {/* RULE SUMMARY ו-RULE OPTIMIZATION אחד ליד השני */}
+<Grid container spacing={2}>
+  {conditions.length > 0 && (
+    <Grid item xs={12} md={6}>
+      <RuleDescription conditions={conditions} />
+    </Grid>
+  )}
+  
+  {optimizationData && (
+    <Grid item xs={12} md={6}>
+      <OptimizationRecommendations optimizationData={optimizationData} />
+    </Grid>
+  )}
+</Grid>
 
       {Array.isArray(conditions) && conditions.map((condition, index) => (
         <React.Fragment key={index}>

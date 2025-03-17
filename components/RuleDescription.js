@@ -7,7 +7,8 @@ import {
   IconButton, 
   TextField,
   InputAdornment,
-  Tooltip
+  Tooltip,
+  Chip
 } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 import ArrowRightIcon from '@mui/icons-material/ArrowRight';
@@ -16,8 +17,33 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 
+// פונקציה לעיבוד טקסט ומציאת והדגשת תנאי פילטר
+const formatRuleDescription = (text) => {
+  if (!text) return null;
+  
+  // בדיקה אם יש ביטוי "with filter:" בטקסט
+  const filterIndex = text.indexOf(' with filter: ');
+  if (filterIndex === -1) return text;
+
+  // פיצול הטקסט לחלק לפני ואחרי הפילטר
+  const beforeFilter = text.substring(0, filterIndex);
+  const afterFilter = text.substring(filterIndex + ' with filter: '.length);
+
+  return (
+    <>
+      {beforeFilter} with filter: <span style={{
+        fontWeight: 'bold',
+        color: '#d32f2f',
+        backgroundColor: '#ffebee',
+        padding: '2px 6px',
+        borderRadius: '4px'
+      }}>WITH FILTER CONDITION: {afterFilter}</span>
+    </>
+  );
+};
+
 const RuleDescription = ({ conditions = [] }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false); // ברירת מחדל - מכווץ
   const [searchTerm, setSearchTerm] = useState('');
 
   // פונקציה להחזרת תיאור מפורט של החוק
@@ -44,6 +70,12 @@ const RuleDescription = ({ conditions = [] }) => {
           return `Find records where ${condition.field} is less than ${condition.value}`;
         case 'count_occurrence':
           return `Count repeated entries in: ${Array.isArray(condition.field) ? condition.field.join(', ') : condition.field}`;
+          case 'execution_count':
+            return `Show processes executed at most ${condition.value || '10'} times${
+                condition.relatedTable ? ` in table ${condition.relatedTable}` : ''
+            }${
+                condition.filterCondition ? ` with additional condition: ${condition.filterCondition}` : ''
+            }`;
         case 'fields_equal':
             if (Array.isArray(condition.field) && condition.field.length >= 2) {
               const fieldPairs = [];
@@ -55,8 +87,16 @@ const RuleDescription = ({ conditions = [] }) => {
               return `Compare fields within each record: ${fieldPairs.join(' AND ')}`;
             }
             return 'Compare equality between fields';
-        case 'related_count':
-              return `Count records where ${condition.field} has at least ${condition.value || '1'} related records in ${condition.relatedTable}.${condition.relatedField}`;
+            case 'related_count':
+              let relatedText = `Count records where ${condition.field} has at least ${condition.value || '1'} related records in ${condition.relatedTable}.${
+                  Array.isArray(condition.relatedField) ? condition.relatedField.join(',') : condition.relatedField
+              }`;
+              
+              // Add filter condition - שינוי כאן להדגשת תנאי הפילטר
+              if (condition.filterCondition && condition.filterCondition.trim() !== '') {
+                  relatedText += ` with filter: ${condition.filterCondition}`;
+              }
+              return relatedText;
           default:
           return 'Custom condition';
       }
@@ -180,13 +220,20 @@ const RuleDescription = ({ conditions = [] }) => {
           example: 'Identifies fields with multiple matching entries',
           searchKeywords: ['count', 'repeat', 'frequency']
         };
-      case 'related_count':
+        case 'related_count':
+          // שינוי כאן - הוספת שדה filterDisplay
+          const hasFilter = condition.filterCondition && condition.filterCondition.trim() !== '';
+          const baseDescription = `Count records in table "${condition.relatedTable}" where field "${
+              Array.isArray(condition.relatedField) ? condition.relatedField.join(',') : condition.relatedField
+          }" matches this record's "${condition.field}" field`;
+          
           return {
-            title: 'Related Records Counter',
-            description: `Count records in table "${condition.relatedTable}" where field "${condition.relatedField}" matches this record's "${condition.field}" field`,
-            example: `Find records with at least ${condition.value || '1'} related entries`,
-            searchKeywords: ['count', 'related', 'foreign key', 'join']
-        };
+              title: 'Related Records Counter',
+              description: baseDescription,
+              filterDisplay: hasFilter ? condition.filterCondition : null,
+              example: `Find records with at least ${condition.value || '1'} related entries`,
+              searchKeywords: ['count', 'related', 'foreign key', 'join', 'filter']
+          };
       default:
         return {
           title: 'Custom Condition',
@@ -195,6 +242,39 @@ const RuleDescription = ({ conditions = [] }) => {
           searchKeywords: ['custom', 'unique', 'advanced']
         };
     }
+  };
+
+  // יצירת תקציר של כל התנאים
+  const getConditionsSummary = () => {
+    if (conditions.length === 0) return "No conditions defined yet";
+    
+    // חישוב סוגי תנאים ייחודיים
+    const conditionTypes = conditions.reduce((acc, condition) => {
+      const type = condition.comparison;
+      if (!acc[type]) acc[type] = 0;
+      acc[type]++;
+      return acc;
+    }, {});
+
+    return Object.entries(conditionTypes).map(([type, count]) => {
+      let typeName = '';
+      switch (type) {
+        case 'is_duplicate': typeName = 'Duplicates'; break;
+        case 'same_name_diff_ext': typeName = 'Same name, diff ext'; break;
+        case 'same_ext_diff_names': typeName = 'Same ext, diff names'; break;
+        case 'is_contain': typeName = 'Contains'; break;
+        case 'not_contain': typeName = 'Not contains'; break;
+        case 'equal': typeName = 'Equals'; break;
+        case 'not_equal': typeName = 'Not equals'; break;
+        case 'is_higher': typeName = 'Greater than'; break;
+        case 'is_lower': typeName = 'Less than'; break;
+        case 'fields_equal': typeName = 'Fields equality'; break;
+        case 'count_occurrence': typeName = 'Count occurrences'; break;
+        case 'related_count': typeName = 'Related records'; break;
+        default: typeName = type; break;
+      }
+      return { type: typeName, count };
+    });
   };
 
   // מסנן את התנאים על פי מונחי החיפוש
@@ -227,6 +307,9 @@ const RuleDescription = ({ conditions = [] }) => {
     setSearchTerm('');
   };
 
+  // יצירת תקציר בצורת chips
+  const conditionsSummary = getConditionsSummary();
+
   return (
     <Paper 
       elevation={2} 
@@ -242,9 +325,9 @@ const RuleDescription = ({ conditions = [] }) => {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between',
-        mb: 2,
-        pb: 1,
-        borderBottom: '1px solid #e0e0e0'
+        mb: isExpanded ? 2 : 0,
+        pb: isExpanded ? 1 : 0,
+        borderBottom: isExpanded ? '1px solid #e0e0e0' : 'none'
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
           <InfoIcon sx={{ mr: 1, color: '#1976d2' }} />
@@ -252,41 +335,43 @@ const RuleDescription = ({ conditions = [] }) => {
             Rule Summary
           </Typography>
           
-          {/* שדה חיפוש משופר */}
-          <TextField
-            variant="outlined"
-            size="small"
-            placeholder="Search conditions..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            sx={{ 
-              ml: 2, 
-              flexGrow: 1,
-              '& .MuiOutlinedInput-root': { 
-                height: '40px',
-              }
-            }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
-              endAdornment: searchTerm && (
-                <InputAdornment position="end">
-                  <Tooltip title="Clear search">
-                    <IconButton 
-                      size="small" 
-                      edge="end" 
-                      onClick={handleClearSearch}
-                    >
-                      <ClearIcon />
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-          />
+          {/* שדה חיפוש מוצג רק כאשר תוכן מורחב */}
+          {isExpanded && (
+            <TextField
+              variant="outlined"
+              size="small"
+              placeholder="Search conditions..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              sx={{ 
+                ml: 2, 
+                flexGrow: 1,
+                '& .MuiOutlinedInput-root': { 
+                  height: '40px',
+                }
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+                endAdornment: searchTerm && (
+                  <InputAdornment position="end">
+                    <Tooltip title="Clear search">
+                      <IconButton 
+                        size="small" 
+                        edge="end" 
+                        onClick={handleClearSearch}
+                      >
+                        <ClearIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
         </Box>
         
         <Tooltip title={isExpanded ? "Collapse details" : "Expand details"}>
@@ -296,7 +381,50 @@ const RuleDescription = ({ conditions = [] }) => {
         </Tooltip>
       </Box>
 
-      {ruleDetailedDescription && (
+      {/* תצוגת תקציר במצב מכווץ */}
+      {!isExpanded && (
+        <Box sx={{ mt: 1 }}>
+          {ruleDetailedDescription && (
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: '#1976d2', 
+                fontStyle: 'italic',
+                mb: 1,
+                display: '-webkit-box',
+                WebkitLineClamp: 1,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
+              {ruleDetailedDescription}
+            </Typography>
+          )}
+          
+          {/* התקציר בצורת chips */}
+          <Box sx={{ 
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1
+          }}>
+            {conditionsSummary.map((condition, idx) => (
+              <Chip
+                key={idx}
+                label={`${condition.type}: ${condition.count}`}
+                size="small"
+                sx={{
+                  backgroundColor: '#e3f2fd',
+                  color: '#1976d2',
+                  fontWeight: 500
+                }}
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
+
+      {isExpanded && ruleDetailedDescription && (
         <Box sx={{ 
           backgroundColor: '#e6f2ff', 
           p: 2, 
@@ -304,7 +432,7 @@ const RuleDescription = ({ conditions = [] }) => {
           mb: 2
         }}>
           <Typography variant="body2" sx={{ color: '#1976d2' }}>
-            {ruleDetailedDescription}
+            {formatRuleDescription(ruleDetailedDescription)}
           </Typography>
         </Box>
       )}
@@ -322,17 +450,39 @@ const RuleDescription = ({ conditions = [] }) => {
                   <Typography variant="subtitle1" sx={{ color: '#2c3e50', fontWeight: 500 }}>
                     {description.title}
                   </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', ml: 2 }}>
-                    <ArrowRightIcon sx={{ color: '#1976d2', fontSize: 20 }} />
-                    <Typography variant="body2" sx={{ color: '#34495e' }}>
-                      {description.description}
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', ml: 2 }}>
+                    <ArrowRightIcon sx={{ color: '#1976d2', fontSize: 20, mt: 0.5 }} />
+                    <Box>
+                      <Typography variant="body2" sx={{ color: '#34495e' }}>
+                        {description.description}
+                      </Typography>
+                      
+                      {/* הצגת תנאי הפילטר בצורה מודגשת אם קיים */}
+                      {description.filterDisplay && (
+                        <Box
+                          component="div"
+                          sx={{
+                            mt: 0.5,
+                            mb: 0.5,
+                            fontWeight: 'bold',
+                            color: '#d32f2f',
+                            backgroundColor: '#ffebee',
+                            p: '2px 6px',
+                            borderRadius: '4px',
+                            display: 'inline-block'
+                          }}
+                        >
+                          WITH FILTER CONDITION: {description.filterDisplay}
+                        </Box>
+                      )}
+                      
+                      {description.example && (
+                        <Typography variant="caption" sx={{ color: '#666', display: 'block' }}>
+                          {description.example}
+                        </Typography>
+                      )}
+                    </Box>
                   </Box>
-                  {description.example && (
-                    <Typography variant="caption" sx={{ ml: 4, color: '#666', display: 'block' }}>
-                      {description.example}
-                    </Typography>
-                  )}
                 </Box>
 
                 {index < filteredConditions.length - 1 && conditions.length > 0 && (

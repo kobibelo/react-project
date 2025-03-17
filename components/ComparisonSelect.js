@@ -64,7 +64,12 @@ const ComparisonSelect = ({ value, onChange }) => {
       value: 'related_count',
       label: 'count related records',
       description: 'Counts records in a related table that reference this record'
-    }
+    },
+    {
+      value: 'execution_count',
+      label: 'execution count',
+      description: 'Shows processes that have never run or have run up to a specified number of times. The count is determined by the entered value'
+    },
   ];
 
   return (

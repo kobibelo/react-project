@@ -179,7 +179,14 @@ export const calculateConditionMatches = async (condition, records) => {
         
         return matchCount;
     }
-
+    if (condition.comparison === 'execution_count') {
+        // החזר את מספר הרשומות שעומדות בתנאי מספר ההרצות
+        return records.filter(record => {
+            const historyCount = parseInt(record.historyCount) || 0;
+            const maxCount = parseInt(condition.value) || 0;
+            return historyCount <= maxCount;
+        }).length;
+    }
     if (condition.comparison === 'related_count') {
         // החזר את סך כל רשומות ההיסטוריה במקום רק את מספר הרשומות
         return records.reduce((sum, record) => sum + (parseInt(record.historyCount) || 0), 0);
@@ -533,6 +540,12 @@ export const showQueryResults = async (result, queryData) => {
                     border-radius: 4px;
                     text-align: center;
                 }
+                    .highlight-count {
+                    background-color: #e3f2fd;
+                    font-weight: bold;
+                    color: #0d47a1;
+                    text-align: center;
+                }
             </style>
             <script>
                 function toggleCollapse(elementId) {
@@ -641,16 +654,21 @@ export const showQueryResults = async (result, queryData) => {
                         ${index + 1}. <strong>${Array.isArray(item.condition.field) ? item.condition.field.join(',') : item.condition.field}</strong> 
                         ${item.condition.comparison} 
                         ${item.condition.comparison === 'same_name_diff_ext' ? '(Same name, different extension)' : 
-                          item.condition.comparison === 'is_duplicate' ? '(Duplicate Check)' : 
-                          item.condition.comparison === 'same_ext_diff_names' ? '(Same extension, different names)' :
-                          item.condition.comparison === 'fields_equal' ? 
+                        item.condition.comparison === 'is_duplicate' ? '(Duplicate Check)' : 
+                        item.condition.comparison === 'same_ext_diff_names' ? '(Same extension, different names)' :
+                        item.condition.comparison === 'fields_equal' ? 
                                     (Array.isArray(item.condition.field) && item.condition.field.length >= 2 ? 
                                         '(' + Array.from({ length: Math.floor(item.condition.field.length / 2) }, (_, i) => 
                                             `${item.condition.field[i*2]} = ${item.condition.field[i*2+1]}`
                                         ).join(' AND ') + ')' : 
                                     '') :
-                          item.condition.comparison === 'related_count' ?
-                                    `(Count related records from ${item.condition.relatedTable}.${item.condition.relatedField}, min: ${item.condition.value || '1'})` :
+                        item.condition.comparison === 'related_count' ?
+                                    `(Count related records from ${item.condition.relatedTable}.${Array.isArray(item.condition.relatedField) ? item.condition.relatedField.join(',') : item.condition.relatedField}${
+                                        // Add filter condition if present
+                                        item.condition.filterCondition && item.condition.filterCondition.trim() !== '' 
+                                        ? `, <span style="color: #e65100; font-weight: bold;">filtered by: ${item.condition.filterCondition}</span>` 
+                                        : ''
+                                    }, min: ${item.condition.value || '1'})` :
                                 `'${item.condition.value}'`}
                                 <span class="matching-count">${item.count} records</span>
                             </div>
@@ -659,7 +677,14 @@ export const showQueryResults = async (result, queryData) => {
                                 : ''}`
                         ).join('')}
             </div>
-
+            ${result.filterCondition ? `
+            <div style="background-color: #fff8e1; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffa000;">
+                <h4 style="color: #e65100; margin-top: 0;">Filter Condition Applied:</h4>
+                <p><strong>SQL Condition:</strong> ${result.filterCondition}</p>
+                <p><strong>Applied to table:</strong> ${result.relatedTable}</p>
+                <p><strong>Effect:</strong> Only history records matching this condition are counted</p>
+            </div>
+            ` : ''}
             ${result.records.length > 0 ? `
                 <table>
                     <tr>
@@ -669,16 +694,15 @@ export const showQueryResults = async (result, queryData) => {
                     </tr>
                     ${result.records.map(row => `
                         <tr>
-                            ${Object.entries(row).map(([key, value]) => 
-                                key === 'related_count' ? 
-                                    `<td class="${parseInt(value) > 0 ? 'highlight-count' : ''}">${value}</td>` :
+                            ${Object.entries(row).map(([colKey, value]) => 
+                                colKey === 'execution_count' || colKey === 'historyCount' ? 
+                                    `<td class="highlight-count">${value}</td>` :
                                     `<td>${value}</td>`
                             ).join('')}
                         </tr>
                     `).join('')}
                 </table>
             ` : '<p>No records found.</p>'}
-
             ${hasRelatedCounts && result.relatedTable ? `
                 <div class="collapsible" onclick="toggleCollapse('related-counts-summary')">
                     <h3 style="margin: 0;">Related Records Summary</h3>
