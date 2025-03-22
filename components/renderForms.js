@@ -3,7 +3,7 @@
 import React from 'react';
 import { Typography, Button, FormControl, InputLabel, Select, MenuItem, RadioGroup, FormControlLabel, Radio, TextField, Grid } from '@mui/material';
 
-// פונקציה שמייצרת את הטופס לייבוא
+// פונקציה שמייצרת את הטופס לייבוא - בלי כפתור Next
 export const RenderImportForm = ({
   mappingName,
   setMappingName,
@@ -19,8 +19,8 @@ export const RenderImportForm = ({
   setImportDatabaseName,
   handleFillClick,
   handleMSSQLTestClick,
-  handleNextClick,
-  testMessage
+  testMessage,
+  isLoading
 }) => (
   <>
     <Typography
@@ -112,15 +112,9 @@ export const RenderImportForm = ({
       color="primary"
       onClick={handleMSSQLTestClick}
       style={{ marginRight: '10px' }}
+      disabled={isLoading}
     >
       Test MSSQL Connection
-    </Button>
-    <Button
-      variant="contained"
-      color="primary"
-      onClick={handleNextClick}
-    >
-      Next
     </Button>
     {testMessage && (
       <Typography style={{ color: 'green', marginTop: '20px' }}>
@@ -130,7 +124,7 @@ export const RenderImportForm = ({
   </>
 );
 
-// פונקציה שמייצרת את הטופס לייצוא
+// פונקציה שמייצרת את הטופס לייצוא - בלי כפתורי ניווט
 export const RenderExportForm = ({
   exportServerType,
   setExportServerType,
@@ -146,10 +140,9 @@ export const RenderExportForm = ({
   setExportDatabaseName,
   handleMySQLFillClick,
   handleMySQLTestClick,
-  handleBackClick,
-  handleNextClick,
   handleGetTables,
-  testMessage
+  testMessage,
+  isLoading
 }) => (
   <>
     <Typography
@@ -235,26 +228,9 @@ export const RenderExportForm = ({
       color="primary"
       onClick={handleMySQLTestClick}
       style={{ marginRight: '10px' }}
+      disabled={isLoading}
     >
       Test MySQL Connection
-    </Button>
-    <Button
-      variant="outlined"
-      color="secondary"
-      onClick={handleBackClick}
-      style={{ marginRight: '10px' }}
-    >
-      Back
-    </Button>
-    <Button
-      variant="contained"
-      color="primary"
-      onClick={() => {
-        handleNextClick();
-        handleGetTables();
-      }}
-    >
-      Next
     </Button>
     {testMessage && (
       <Typography style={{ color: 'green', marginTop: '20px' }}>

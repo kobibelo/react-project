@@ -21,8 +21,18 @@ export const LinkedFieldsProvider = ({ children }) => {
     });
   };
 
+  // פונקציה חדשה לאיפוס כל השדות המקושרים
+  const resetLinkedFields = () => {
+    setLinkedFields(new Set());
+  };
+
   return (
-    <LinkedFieldsContext.Provider value={{ linkedFields, addLinkedField, removeLinkedField }}>
+    <LinkedFieldsContext.Provider value={{ 
+      linkedFields, 
+      addLinkedField, 
+      removeLinkedField, 
+      resetLinkedFields  // הוספת הפונקציה החדשה לערך המסופק
+    }}>
       {children}
     </LinkedFieldsContext.Provider>
   );

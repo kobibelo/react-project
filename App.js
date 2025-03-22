@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { AppBar, Toolbar, Typography, Button, Menu, MenuItem } from '@mui/material';
 import MappingList from './MappingList';
-import Mapping from './Mapping';
+import Mapping from './ImprovedMapping';
 import Setting from './Setting';
 import Show from './Show';
 import AddRule from './AddRule';
