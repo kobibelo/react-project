@@ -73,7 +73,16 @@ const DatabaseSelector = ({
         });
         
         if (response.data.success) {
-          setTables(response.data.tables);
+          const loadedTables = response.data.tables;
+          
+          // בדוק אם הטבלה הנבחרת הנוכחית לא קיימת ברשימה
+          if (selectedTable && !loadedTables.includes(selectedTable)) {
+            // אם כן, הוסף אותה לרשימה
+            loadedTables.push(selectedTable);
+            console.log(`Added missing table '${selectedTable}' to list of tables`);
+          }
+          
+          setTables(loadedTables);
         } else {
           setError('Failed to load tables');
         }
@@ -86,7 +95,16 @@ const DatabaseSelector = ({
     };
     
     fetchTables();
-  }, [importServerName, importDatabaseName]);
+  }, [importServerName, importDatabaseName, selectedTable]);
+
+  // הוספת פונקציה להוספת הטבלה הנבחרת לרשימה אם היא חסרה
+  useEffect(() => {
+    // אם יש טבלה נבחרת אבל היא לא נמצאת ברשימת הטבלאות, הוסף אותה
+    if (selectedTable && tables.length > 0 && !tables.includes(selectedTable)) {
+      console.log(`Adding missing selected table '${selectedTable}' to tables list`);
+      setTables(prevTables => [...prevTables, selectedTable]);
+    }
+  }, [selectedTable, tables]);
 
   // Handle database selection
   const handleDatabaseChange = (event) => {
@@ -94,46 +112,58 @@ const DatabaseSelector = ({
     onDatabaseChange(database);
   };
 
-// Handle table selection and fetch fields
-const handleTableChange = async (event) => {
-  console.log('handleTableChange event:', event);
-  
-  // וודא שיש אירוע ושהוא מכיל target.value
-  if (!event || !event.target) {
-    console.error('Invalid event received in handleTableChange');
-    return;
-  }
-
-  // קבל את הערך מהאירוע
-  const table = event.target.value;
-  
-  // העבר את האירוע המקורי לפונקציית onTableChange
-  onTableChange(event);
-  
-  if (!importServerName || !importDatabaseName || !table) return;
-  
-  setLoading(true);
-  setError(null);
-  
-  try {
-    const response = await axios.post('http://localhost:3001/get-fields', {
-      serverName: importServerName,
-      databaseName: importDatabaseName,
-      tableName: table
-    });
+  // Handle table selection and fetch fields
+  const handleTableChange = async (event) => {
+    console.log('handleTableChange event:', event);
     
-    if (response.data.success) {
-      onFieldsLoaded(response.data.fields);
+    // וודא שיש אירוע וערך - תמיכה גם באירוע ישיר וגם בערך מחרוזת
+    let table;
+    
+    if (typeof event === 'string') {
+      table = event;
+    } else if (event && event.target) {
+      table = event.target.value;
     } else {
-      setError('Failed to load fields');
+      console.error('Invalid event received in handleTableChange');
+      return;
     }
-  } catch (error) {
-    console.error('Error loading fields:', error);
-    setError('Error loading fields');
-  } finally {
-    setLoading(false);
-  }
-};
+    
+    // העבר את הטבלה לפונקציית onTableChange - בפורמט מותאם
+    if (onTableChange) {
+      // אם יש event רגיל, העבר אותו. אחרת, צור אירוע מלאכותי
+      if (typeof event === 'string') {
+        const syntheticEvent = { target: { value: event } };
+        onTableChange(syntheticEvent);
+      } else {
+        onTableChange(event);
+      }
+    }
+    
+    if (!importServerName || !importDatabaseName || !table) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await axios.post('http://localhost:3001/get-fields', {
+        serverName: importServerName,
+        databaseName: importDatabaseName,
+        tableName: table
+      });
+      
+      if (response.data.success) {
+        console.log('Fields loaded for table', table, ':', response.data.fields);
+        onFieldsLoaded(response.data.fields);
+      } else {
+        setError('Failed to load fields');
+      }
+    } catch (error) {
+      console.error('Error loading fields:', error);
+      setError('Error loading fields');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
@@ -176,7 +206,7 @@ const handleTableChange = async (event) => {
             </InputLabel>
             <Select
               labelId="table-select-label"
-              value={selectedTable || ''}
+              value={tables.includes(selectedTable) ? selectedTable : ''}
               onChange={handleTableChange}
               label="Table"
               disabled={loading || tables.length === 0 || !importDatabaseName}

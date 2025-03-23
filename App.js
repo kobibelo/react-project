@@ -35,6 +35,8 @@ function App() {
         <Routes>
           <Route path="/mapping/list" element={<MappingList />} />
           <Route path="/mapping/add" element={<Mapping />} />
+          {/* הוספת ניתוב חדש לעריכת מיפוי */}
+          <Route path="/mapping/edit/:id" element={<Mapping />} />
 
           <Route path="/preview/setting" element={<Setting />} />
           <Route path="/preview/show" element={<Show />} />

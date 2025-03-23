@@ -305,6 +305,52 @@ const EnhancedDropTargetArea = ({
     setMappedFields(Array.from(new Set(Object.keys(fieldMappings))));
   }, [fieldMappings]);
 
+  // Add this useEffect to ensure fields are displayed when loaded from the server
+  useEffect(() => {
+    // This ensures fields are displayed when loaded from the server
+    // Force update of mappedFields on component mount
+    if (Object.keys(fieldMappings).length > 0 && mappedFields.length === 0) {
+      console.log('Initial load: updating mapped fields from fieldMappings:', fieldMappings);
+      
+      // Update the mapped fields and link them
+      const initialFields = Object.keys(fieldMappings);
+      setMappedFields(initialFields);
+      
+      // Add each field to linked fields context
+      initialFields.forEach(field => {
+        if (!linkedFields.has(field)) {
+          addLinkedField(field);
+        }
+      });
+    }
+  }, [fieldMappings, mappedFields.length, addLinkedField, linkedFields]);
+
+  // This is new! Add default sources for fields if not present
+  useEffect(() => {
+    // Check if there are fields in mappedFields that don't have sources
+    const fieldsWithoutSources = mappedFields.filter(field => !fieldSources[field]);
+    
+    if (fieldsWithoutSources.length > 0) {
+      console.log('Fields without sources detected, adding default sources:', fieldsWithoutSources);
+      
+      // Get default source from parent via onFieldDrop (which has database and table name)
+      if (onFieldDrop) {
+        const defaultSource = {
+          databaseName: 'CTMdataNew', // Default value, should be overridden
+          tableName: 'PROCESSES'      // Default value, should be overridden
+        };
+        
+        // Update sources for each field that doesn't have one
+        fieldsWithoutSources.forEach(field => {
+          setFieldSources(prev => ({
+            ...prev,
+            [field]: defaultSource
+          }));
+        });
+      }
+    }
+  }, [fieldMappings, mappedFields, fieldSources, onFieldDrop]);
+
   // Handle a field being dropped on the main area
   const handleFieldDrop = (field, source) => {
     // בדיקה נוספת שהשדה לא כבר קיים

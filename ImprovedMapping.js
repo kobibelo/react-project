@@ -22,6 +22,7 @@ import {
   DialogTitle,
   TextField
 } from '@mui/material';
+import { useParams, useNavigate } from 'react-router-dom';
 import StorageIcon from '@mui/icons-material/Storage';
 import CodeIcon from '@mui/icons-material/Code';
 import TableViewIcon from '@mui/icons-material/TableView';
@@ -29,7 +30,6 @@ import SaveIcon from '@mui/icons-material/Save';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
@@ -44,6 +44,8 @@ import SqlQueryDialog from './components/SqlQueryDialog';
 axios.defaults.headers.post['Content-Type'] = 'application/json';
 
 function ImprovedMapping() {
+  // קבל את ID מהפרמטרים בURL
+  const { id } = useParams();
   // Step management
   const [step, setStep] = useState(1);
   
@@ -103,7 +105,174 @@ function ImprovedMapping() {
   useEffect(() => {
     resetAllMappingData();
   }, []);
+
+  useEffect(() => {
+    if (id) {
+      // אם יש ID, טען את המיפוי הקיים
+      loadExistingMapping(id);
+    }
+  }, [id]); // תלוי בשינויים ב-ID
+
+
+  // הוסף ליד ה-useEffect הקיימים
+
+// טען טבלאות כאשר שם השרת וה-database נטענים
+useEffect(() => {
+  if (importServerName && importDatabaseName) {
+    loadTables();
+  }
+}, [importServerName, importDatabaseName]);
+
+// טען שדות כאשר הטבלה נבחרת
+useEffect(() => {
+  if (importServerName && importDatabaseName && selectedTable) {
+    fetchTableFields(importServerName, importDatabaseName, selectedTable);
+  }
+}, [selectedTable, importServerName, importDatabaseName]);
   
+// פונקציה לטעינת מיפוי קיים
+const loadExistingMapping = async (mappingId) => {
+  setIsLoading(true);
+  try {
+    const response = await axios.get(`http://localhost:3001/mapping/${mappingId}`);
+    
+    if (response.data.success) {
+      const mappingData = response.data.mapping;
+      console.log('Loaded mapping data:', mappingData); // הוסף לוג
+      
+      // עדכון כל השדות
+      setMappingName(mappingData.mapping_name || '');
+      setMappingInfo(mappingData.mapping_info || '');
+      setImportServerName(mappingData.import_server || '');
+      setImportDatabaseName(mappingData.import_database || '');
+      
+      setExportServerName(mappingData.export_server || '');
+      setExportDatabaseName(mappingData.export_database || '');
+      setExportUserName(mappingData.export_username || 'root');
+      setExportPassword(mappingData.export_password || '1234');
+      
+      // שינוי חשוב: שימוש ב-source_table במקום selected_table
+      setSelectedTable(mappingData.source_table || '');
+      
+      // טען את רשימת השדות באמצעות קריאה לשרת - שינוי ל-source_table
+      if (mappingData.import_server && mappingData.import_database && mappingData.source_table) {
+        try {
+          await fetchTableFields(
+            mappingData.import_server, 
+            mappingData.import_database, 
+            mappingData.source_table
+          );
+        } catch (fieldError) {
+          console.error('Error fetching table fields:', fieldError);
+        }
+      }
+      
+      // טען מיפוי שדות
+      if (mappingData.field_mappings) {
+        let parsedMappings;
+        try {
+          // נסה לפרסר אם זה מגיע כמחרוזת JSON
+          parsedMappings = typeof mappingData.field_mappings === 'string' 
+            ? JSON.parse(mappingData.field_mappings) 
+            : mappingData.field_mappings;
+            
+          console.log('Parsed field mappings:', parsedMappings); // הוסף לוג
+          
+          console.log('Setting fieldMappings in loadExistingMapping:', parsedMappings);
+          setFieldMappings(parsedMappings);
+          console.log('Current fieldMappings after setting:', fieldMappings);
+          
+          // הגדר את מקור השדות
+          const sourceInfo = {
+            databaseName: mappingData.import_database,
+            tableName: mappingData.source_table
+          };
+          
+          // עדכן גם את הסט של השדות הממופים
+          const fieldSet = new Set(Object.keys(parsedMappings));
+          setDroppedFields(fieldSet);
+          
+          // הוסף לרשימת השדות המקושרים ועדכן את המקור של כל שדה
+          fieldSet.forEach(field => {
+            addLinkedField(field);
+            
+            // הוסף מידע על המקור של השדה
+            setFieldSources(prev => ({
+              ...prev,
+              [field]: sourceInfo
+            }));
+          });
+        } catch (err) {
+          console.error('Error parsing field mappings:', err);
+        }
+      }
+      
+      showSnackbar('Mapping loaded successfully for editing', 'success');
+    } else {
+      showSnackbar('Failed to load mapping data', 'error');
+    }
+  } catch (error) {
+    console.error('Error loading mapping:', error);
+    showSnackbar('Error loading mapping data', 'error');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+// פונקציה לטעינת רשימת טבלאות
+const loadTables = async () => {
+  if (!importServerName || !importDatabaseName) return;
+  
+  setIsLoading(true);
+  try {
+    const response = await axios.post('http://localhost:3001/get-tables', {
+      serverName: importServerName,
+      databaseName: importDatabaseName
+    });
+    
+    if (response.data.success) {
+      const loadedTables = response.data.tables;
+      
+      // בדוק אם הטבלה הנבחרת הנוכחית לא קיימת ברשימה
+      if (selectedTable && !loadedTables.includes(selectedTable)) {
+        // אם כן, הוסף אותה לרשימה
+        loadedTables.push(selectedTable);
+        console.log(`Added missing table '${selectedTable}' to list of tables`);
+      }
+      
+      setTables(loadedTables);
+      console.log('Tables loaded:', loadedTables);
+    }
+  } catch (error) {
+    console.error('Error loading tables:', error);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+// פונקציה לטעינת שדות של טבלה
+const fetchTableFields = async (server, database, table) => {
+  console.log('Fetching fields for:', { server, database, table });
+  setIsLoading(true);
+  try {
+    const response = await axios.post('http://localhost:3001/get-fields', {
+      serverName: server,
+      databaseName: database,
+      tableName: table
+    });
+    
+    if (response.data.success) {
+      console.log('Fields loaded:', response.data.fields);
+      setFields(response.data.fields);
+    } else {
+      console.error('Server returned error for fields:', response.data);
+    }
+  } catch (error) {
+    console.error('Error fetching table fields:', error);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Function to reset all mapping data
   const resetAllMappingData = () => {
@@ -520,56 +689,51 @@ function ImprovedMapping() {
       showSnackbar('Please enter a table name.', 'error');
       return;
     }
-
+  
     setSaveTableDialogOpen(false);
     setIsLoading(true);
-
+  
     try {
-      // Step 1: Get data from the original table
-      const requestDataForData = {
-        serverName: importServerName,
-        databaseName: importDatabaseName,
-        tableName: selectedTable,
-        mappedFields: Object.keys(fieldMappings),
+      // קבלת נתונים משדות הטופס 
+      // כולל שדות ממופים ושדות שהשם שלהם שונה
+      const fieldMappingsData = {};
+      Object.keys(fieldMappings).forEach(field => {
+        fieldMappingsData[field] = fieldMappings[field];
+      });
+      
+      // יצירת מבנה מיפוי שדות משופר
+      const enhancedFieldMappings = {
+        source: {
+          database: importDatabaseName,
+          table: selectedTable,
+          fields: fields.map(field => ({ 
+            name: field,
+            table: selectedTable,
+            database: importDatabaseName
+          }))
+        },
+        target: {
+          database: exportDatabaseName,
+          table: saveTableName,
+          fields: Object.keys(fieldMappings).map(field => ({
+            name: renamedFields[field] || field,
+            original: field
+          }))
+        },
+        mappings: {}
       };
-
-      const responseData = await axios.post('http://localhost:3001/get-table-data', requestDataForData);
-
-      if (!responseData.data.success) {
-        showSnackbar('Failed to retrieve data from the original table.', 'error');
-        setIsLoading(false);
-        return;
-      }
-
-      const data = responseData.data.data;
-
-      // Step 2: Prepare customized field names
-      const transformedMappings = {};
-      for (const [key, value] of Object.entries(fieldMappings)) {
-        // Use new name if exists, otherwise original name
-        const displayName = renamedFields[key] || key;
-        transformedMappings[displayName] = key;
-      }
-
-      // Step 3: Create the table and insert data in MySQL
-      const requestDataForCreation = {
-        serverName: exportServerName,
-        databaseName: exportDatabaseName,
-        tableName: saveTableName,
-        mappedFields: transformedMappings,
-        renamedFields: renamedFields,
-        tableData: data,
-      };
-
-      const responseCreation = await axios.post('http://localhost:3001/create-table-with-data', requestDataForCreation);
-
-      if (!responseCreation.data.success) {
-        showSnackbar('Failed to create table in MySQL.', 'error');
-        setIsLoading(false);
-        return;
-      }
-
-      // Step 4: Save mapping data
+      
+      // הוספת מיפויי השדות במבנה החדש
+      Object.keys(fieldMappings).forEach(field => {
+        enhancedFieldMappings.mappings[field] = {
+          targetField: fieldMappings[field] || field,
+          mappedName: renamedFields[field] || field,
+          sourceTable: selectedTable,
+          targetTable: saveTableName
+        };
+      });
+      
+      // שמירת המיפוי במבנה החדש
       const requestDataForMapping = {
         mappingName,
         mappingInfo,
@@ -583,26 +747,34 @@ function ImprovedMapping() {
         exportDatabaseName,
         exportUserName,
         exportPassword,
-        fieldMappings,
+        fieldMappings: enhancedFieldMappings, // מבנה משופר
         renamedFields,
         selectedTable,
         targetTable: saveTableName,
       };
-
-      const responseSaveMapping = await axios.post('http://localhost:3001/save-mapping', requestDataForMapping);
-
+  
+      let responseSaveMapping;
+  
+      // בדיקה אם מדובר בעדכון או ביצירה חדשה
+      if (id) {
+        // עדכון מיפוי קיים
+        responseSaveMapping = await axios.put(`http://localhost:3001/mapping/update/${id}`, requestDataForMapping);
+      } else {
+        // יצירת מיפוי חדש
+        responseSaveMapping = await axios.post('http://localhost:3001/save-mapping', requestDataForMapping);
+      }
+      
       if (responseSaveMapping.data.success) {
-        showSnackbar('Mapping saved and table created successfully.', 'success');
-        
-        // Navigate to list page after a short delay
+        showSnackbar(id ? 'Mapping updated successfully.' : 'Mapping saved successfully.', 'success');
+        // ניווט לדף הרשימה אחרי השהייה קצרה
         setTimeout(() => {
           navigate('/mapping/list');
         }, 1500);
       } else {
-        showSnackbar('Failed to save mapping.', 'error');
+        showSnackbar(id ? 'Failed to update mapping.' : 'Failed to save mapping.', 'error');
       }
     } catch (error) {
-      console.error('Error during save and create operation:', error);
+      console.error('Error during save operation:', error);
       showSnackbar(`Error: ${error.message}`, 'error');
     } finally {
       setIsLoading(false);
