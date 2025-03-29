@@ -4,12 +4,14 @@ import {
     Tooltip, Button, Container, Table, TableHead, TableBody, TableRow, TableCell, 
     Typography, IconButton, Chip, Box, FormControl, InputLabel, Select, MenuItem, 
     OutlinedInput, Checkbox, ListItemText, FormGroup, FormControlLabel,
-    ToggleButtonGroup, ToggleButton
+    ToggleButtonGroup, ToggleButton, Collapse, Paper, Grid, Divider
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { styled } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -18,27 +20,30 @@ import {
     DeleteSweepRounded,  // Icon for deletion
     SaveAltRounded,      // Icon for saving preferences
     VisibilityOffOutlined, // Icon for inactive rules
-    VisibilityOutlined   // Icon for active rules
+    VisibilityOutlined,   // Icon for active rules
+    Info,                 // Icon for info
+    TableChart,           // Icon for table
+    CompareArrows         // Icon for conditions
 } from '@mui/icons-material';
 
 
 const StyledTableCell = styled(TableCell)({
-    padding: '10px',       // הגדלת הפדינג
+    padding: '10px',
     textAlign: 'left',
-    whiteSpace: 'nowrap',  // מניעת שבירת שורות ברוב העמודות
-    height: '80px',        // הגדלת גובה לכל התאים
+    whiteSpace: 'nowrap',
+    height: '80px',
     verticalAlign: 'middle',
 });
 
-// עמודה מיוחדת ל-Rule Info שתהיה רחבה יותר
+// Special cell for Rule Info that's wider
 const InfoTableCell = styled(TableCell)({
     padding: '10px',
     textAlign: 'left',
-    width: '30%',          // הגדרת רוחב גדול יותר לעמודה זו
-    height: '80px',        // הגדלת גובה
+    width: '30%',
+    height: '80px',
     verticalAlign: 'middle',
     '& p': {
-        maxHeight: '80px', // הגדלת גובה המקסימלי לטקסט
+        maxHeight: '80px',
         overflow: 'auto'
     }
 });
@@ -46,14 +51,14 @@ const InfoTableCell = styled(TableCell)({
 const CompactTableCell = styled(TableCell)({
     padding: '10px',
     textAlign: 'left',
-    maxWidth: '150px',     // הגדלת הרוחב המקסימלי לעמודות הצרות
+    maxWidth: '150px',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    height: '80px',        // הגדלת גובה
+    height: '80px',
     verticalAlign: 'middle',
 });
 
-// עמודת כותרת בסיסית עם אפשרות מיון
+// Basic sortable header cell
 const SortableHeadCell = styled(TableCell)(({ sortDirection }) => ({
     backgroundColor: '#1976d2',
     color: 'white',
@@ -77,14 +82,14 @@ const SortableHeadCell = styled(TableCell)(({ sortDirection }) => ({
     }
 }));
 
-// עמודת כותרת מיוחדת ל-Rule Info
+// Special header cell for Rule Info
 const InfoTableHeadCell = styled(SortableHeadCell)({
-    width: '30%', // התאמת הרוחב לעמודה
+    width: '30%',
 });
 
-// עמודת כותרת צרה
+// Compact header cell
 const CompactTableHeadCell = styled(SortableHeadCell)({
-    maxWidth: '150px', // הגדלת רוחב מקסימלי
+    maxWidth: '150px',
 });
 
 const StyledButton = styled(Button)(({ theme }) => ({
@@ -101,7 +106,7 @@ const ActionsContainer = styled('div')({
     justifyContent: 'center',
 });
 
-// מודל לבחירת עמודות שתופיע כחלון צף עם כפתור שמירה
+// Column selector modal
 const ColumnSelectorModal = styled(Box)(({ theme }) => ({
     position: 'absolute',
     right: 0,
@@ -117,27 +122,27 @@ const ColumnSelectorModal = styled(Box)(({ theme }) => ({
     border: '1px solid #e0e0e0'
 }));
 
-// פונקציה לבחירת צבע לרמת סיכון
+// Function to choose color for risk level
 const getRiskColor = (risk) => {
     switch (risk) {
-        case 'Critical': return '#d32f2f'; // אדום כהה
-        case 'High': return '#f44336'; // אדום
-        case 'Medium': return '#ff9800'; // כתום
-        case 'Low': return '#4caf50'; // ירוק
-        default: return '#757575'; // אפור
+        case 'Critical': return '#d32f2f';
+        case 'High': return '#f44336';
+        case 'Medium': return '#ff9800';
+        case 'Low': return '#4caf50';
+        default: return '#757575';
     }
 };
 
-// פונקציה לבחירת צבע לאחוז השפעה
+// Function to choose color for impact percentage
 const getImpactColor = (percentage) => {
     const percent = parseFloat(percentage);
-    if (percent >= 50) return '#d32f2f'; // אדום כהה
-    if (percent >= 30) return '#ff9800'; // כתום
-    if (percent >= 15) return '#2196f3'; // כחול
-    return '#4caf50'; // ירוק
+    if (percent >= 50) return '#d32f2f';
+    if (percent >= 30) return '#ff9800';
+    if (percent >= 15) return '#2196f3';
+    return '#4caf50';
 };
 
-// פונקציה לקבלת שם ידידותי לתנאי
+// Function to get friendly name for condition
 const getComparisonName = (comparisonType) => {
     switch (comparisonType) {
         case 'is_duplicate': return 'Duplicates';
@@ -156,22 +161,22 @@ const getComparisonName = (comparisonType) => {
     }
 };
 
-// פונקציה לקבלת צבע לתנאי
+// Function to choose color for condition
 const getComparisonColor = (comparisonType) => {
     switch (comparisonType) {
-        case 'is_duplicate': return '#e3f2fd'; // כחול בהיר
-        case 'same_name_diff_ext': return '#f3e5f5'; // סגול בהיר
-        case 'same_ext_diff_names': return '#f3e5f5'; // סגול בהיר
-        case 'is_contain': return '#e8f5e9'; // ירוק בהיר
-        case 'not_contain': return '#ffebee'; // אדום בהיר
-        case 'equal': return '#e8f5e9'; // ירוק בהיר
-        case 'not_equal': return '#ffebee'; // אדום בהיר
-        case 'is_higher': return '#fff8e1'; // צהוב בהיר
-        case 'is_lower': return '#fff8e1'; // צהוב בהיר
-        case 'fields_equal': return '#e0f7fa'; // ציאן בהיר
-        case 'count_occurrence': return '#e8eaf6'; // אינדיגו בהיר
-        case 'related_count': return '#fce4ec'; // ורוד בהיר
-        default: return '#f5f5f5'; // אפור בהיר
+        case 'is_duplicate': return '#e3f2fd';
+        case 'same_name_diff_ext': return '#f3e5f5';
+        case 'same_ext_diff_names': return '#f3e5f5';
+        case 'is_contain': return '#e8f5e9';
+        case 'not_contain': return '#ffebee';
+        case 'equal': return '#e8f5e9';
+        case 'not_equal': return '#ffebee';
+        case 'is_higher': return '#fff8e1';
+        case 'is_lower': return '#fff8e1';
+        case 'fields_equal': return '#e0f7fa';
+        case 'count_occurrence': return '#e8eaf6';
+        case 'related_count': return '#fce4ec';
+        default: return '#f5f5f5';
     }
 };
 
@@ -179,6 +184,586 @@ const getComparisonColor = (comparisonType) => {
 const COLUMNS_STORAGE_KEY = 'rulesListVisibleColumns';
 const SORT_STORAGE_KEY = 'rulesListSortPreferences';
 const FILTER_STORAGE_KEY = 'rulesListFilterPreferences';
+
+// Expandable Rule Row component
+const ExpandableRuleRow = ({ rule, visibleColumns, onToggleStatus, onDelete, onEdit, onShowResults }) => {
+    const [open, setOpen] = useState(false);
+    
+    // Convert conditions string to JSON if needed
+    const getConditions = () => {
+        try {
+            return typeof rule.conditions === 'string' 
+                ? JSON.parse(rule.conditions) 
+                : rule.conditions || [];
+        } catch (error) {
+            console.error('Error parsing conditions:', error);
+            return [];
+        }
+    };
+    
+    const conditions = getConditions();
+    
+    // Create a human-readable description of the rule
+    const getRuleDescription = () => {
+        if (conditions.length === 0) return "No conditions defined for this rule";
+        
+        let description = `Checking `;
+        
+        // Map condition types to categories
+        const comparisonTypes = {};
+        conditions.forEach(condition => {
+            const type = condition.comparison;
+            if (!comparisonTypes[type]) comparisonTypes[type] = [];
+            comparisonTypes[type].push(condition);
+        });
+        
+        // Build description based on condition types
+        const descParts = [];
+        
+        if (comparisonTypes['is_duplicate']) {
+            descParts.push(`duplicates in fields ${comparisonTypes['is_duplicate'].map(c => 
+                Array.isArray(c.field) ? c.field.join(', ') : c.field).join(', ')}`);
+        }
+        
+        if (comparisonTypes['same_name_diff_ext']) {
+            descParts.push(`files with same name but different extensions`);
+        }
+        
+        if (comparisonTypes['is_contain'] || comparisonTypes['not_contain']) {
+            const containFields = [...(comparisonTypes['is_contain'] || []), ...(comparisonTypes['not_contain'] || [])];
+            descParts.push(`value containment in fields ${containFields.map(c => c.field).join(', ')}`);
+        }
+        
+        if (comparisonTypes['equal'] || comparisonTypes['not_equal']) {
+            const equalFields = [...(comparisonTypes['equal'] || []), ...(comparisonTypes['not_equal'] || [])];
+            descParts.push(`equality in fields ${equalFields.map(c => c.field).join(', ')}`);
+        }
+        
+        if (comparisonTypes['is_higher'] || comparisonTypes['is_lower']) {
+            const compareFields = [...(comparisonTypes['is_higher'] || []), ...(comparisonTypes['is_lower'] || [])];
+            descParts.push(`numeric comparison in fields ${compareFields.map(c => c.field).join(', ')}`);
+        }
+        
+        if (comparisonTypes['count_occurrence']) {
+            descParts.push(`occurrence counting`);
+        }
+        
+        if (comparisonTypes['related_count']) {
+            descParts.push(`related record relationships`);
+        }
+        
+        return description + descParts.join(', ') + ` in table ${rule.selected_table}`;
+    };
+
+    return (
+        <>
+            <TableRow 
+                sx={{ 
+                    '& > *': { borderBottom: 'unset' },
+                    backgroundColor: rule.status === 0 ? 'rgba(244, 67, 54, 0.04)' : 'inherit',
+                    opacity: rule.status === 0 ? 0.9 : 1,
+                    '&:hover': {
+                        backgroundColor: '#f5f5f5'
+                    }
+                }}
+            >
+                {/* Expand button */}
+                <TableCell style={{ width: '40px', padding: '0 8px' }}>
+                    <IconButton
+                        size="small"
+                        onClick={() => setOpen(!open)}
+                        sx={{ 
+                            backgroundColor: open ? 'rgba(25, 118, 210, 0.1)' : 'transparent',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                    </IconButton>
+                </TableCell>
+                
+                {/* Regular columns */}
+                {visibleColumns.status && (
+                    <CompactTableCell>
+                        <Tooltip title={rule.status === 1 ? 'Active' : 'Inactive'}>
+                            <IconButton onClick={() => onToggleStatus(rule)} size="small">
+                                {rule.status === 1 ? (
+                                    <CheckCircleIcon style={{ color: 'green', fontSize: '24px' }} />
+                                ) : (
+                                    <CancelIcon style={{ color: 'red', fontSize: '24px' }} />
+                                )}
+                            </IconButton>
+                        </Tooltip>
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.id && (
+                    <CompactTableCell>
+                        <Typography variant="body1" fontWeight="medium">
+                            {rule.id}
+                        </Typography>
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.ruleName && (
+                    <CompactTableCell>
+                        <Typography variant="body1" fontWeight="medium">
+                            {rule.rule_name}
+                        </Typography>
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.ruleInfo && (
+                    <InfoTableCell>
+                        <Typography 
+                            variant="body2" 
+                            sx={{ 
+                                maxHeight: '70px',
+                                overflow: 'auto',
+                                padding: '5px',
+                                backgroundColor: '#fafafa',
+                                borderRadius: '4px',
+                                border: '1px solid #f0f0f0'
+                            }}
+                        >
+                            {rule.rule_info}
+                        </Typography>
+                    </InfoTableCell>
+                )}
+                
+                {visibleColumns.comparison && (
+                    <CompactTableCell sx={{ overflow: 'visible' }}>
+                        {conditions.slice(0, 2).map((condition, index) => (
+                            <Chip
+                                key={index}
+                                label={getComparisonName(condition.comparison)}
+                                size="small"
+                                sx={{
+                                    backgroundColor: getComparisonColor(condition.comparison),
+                                    margin: '2px',
+                                    fontSize: '0.8rem',
+                                    height: '24px',
+                                    mb: 0.5
+                                }}
+                            />
+                        ))}
+                        {conditions.length > 2 && (
+                            <Chip
+                                label={`+${conditions.length - 2} more`}
+                                size="small"
+                                sx={{ 
+                                    backgroundColor: '#eeeeee',
+                                    fontSize: '0.8rem',
+                                    height: '24px',
+                                    mb: 0.5,
+                                    fontStyle: 'italic'
+                                }}
+                            />
+                        )}
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.sourceTable && (
+                    <CompactTableCell>
+                        <Box sx={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            gap: 0.7,
+                            backgroundColor: '#f5f5f5',
+                            padding: '6px',
+                            borderRadius: '6px',
+                            maxHeight: '70px',
+                            overflow: 'auto'
+                        }}>
+                            <Typography 
+                                variant="body2" 
+                                sx={{ 
+                                    fontWeight: 'bold', 
+                                    color: '#1976d2',
+                                    fontSize: '0.85rem'
+                                }}
+                            >
+                                {rule.selected_table || rule.sourceTable || 'N/A'}
+                            </Typography>
+                        </Box>
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.matchTotal && (
+                    <CompactTableCell>
+                        <Box sx={{ 
+                            backgroundColor: '#e8f4fd', 
+                            padding: '6px 10px', 
+                            borderRadius: '4px',
+                            display: 'inline-block'
+                        }}>
+                            <Typography variant="body2" fontWeight="bold">
+                                {rule.matching_records !== null ? rule.matching_records : 'N/A'} / {rule.total_records !== null ? rule.total_records : 'N/A'}
+                            </Typography>
+                        </Box>
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.impactPercentage && (
+                    <CompactTableCell>
+                        <Box sx={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: '#f8f8f8',
+                            padding: '6px 10px',
+                            borderRadius: '4px',
+                            border: '1px solid #e0e0e0',
+                            minWidth: '70px'
+                        }}>
+                            <Typography 
+                                variant="body2"
+                                style={{ 
+                                    fontWeight: 'bold',
+                                    color: getImpactColor(rule.impact_percentage || rule.optimizationData?.quantitativeImpact?.impactPercentage || 0)
+                                }}
+                            >
+                                {rule.impact_percentage || 
+                                (rule.optimizationData?.quantitativeImpact?.impactPercentage 
+                                    ? `${rule.optimizationData.quantitativeImpact.impactPercentage}%` 
+                                    : 'N/A')}
+                            </Typography>
+                        </Box>
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.riskLevel && (
+                    <CompactTableCell>
+                        <Chip
+                            label={rule.business_risk || rule.optimizationData?.businessRisk || 'N/A'}
+                            size="small"
+                            sx={{
+                                fontWeight: 'bold',
+                                color: 'white',
+                                backgroundColor: getRiskColor(rule.business_risk || rule.optimizationData?.businessRisk || 'N/A'),
+                                padding: '2px',
+                                height: '28px'
+                            }}
+                        />
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.lastUpdate && (
+                    <CompactTableCell>
+                        <Typography 
+                            variant="body2"
+                            sx={{
+                                backgroundColor: '#f0f0f0',
+                                padding: '5px 8px',
+                                borderRadius: '4px',
+                                fontSize: '0.85rem'
+                            }}
+                        >
+                            {new Date(rule.last_update).toLocaleString()}
+                        </Typography>
+                    </CompactTableCell>
+                )}
+                
+                {visibleColumns.actions && (
+                    <CompactTableCell>
+                        <ActionsContainer>
+                            <Tooltip title="Display Query Results">
+                                <IconButton 
+                                    color="primary" 
+                                    onClick={() => onShowResults(rule)}
+                                    sx={{
+                                        backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                                        margin: '0 4px'
+                                    }}
+                                >
+                                    <DynamicFeedRounded style={{ color: '#1976d2', fontSize: '22px' }} />
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Edit Rule">
+                                <IconButton 
+                                    color="primary" 
+                                    onClick={() => onEdit(rule.id)}
+                                    sx={{
+                                        backgroundColor: 'rgba(76, 175, 80, 0.08)',
+                                        margin: '0 4px'
+                                    }}
+                                >
+                                    <TuneRounded style={{ color: '#4caf50', fontSize: '22px' }} />
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete Rule">
+                                <IconButton 
+                                    color="error" 
+                                    onClick={() => onDelete(rule.id)}
+                                    sx={{
+                                        backgroundColor: 'rgba(244, 67, 54, 0.08)',
+                                        margin: '0 4px'
+                                    }}
+                                >
+                                    <DeleteSweepRounded style={{ color: '#f44336', fontSize: '22px' }} />
+                                </IconButton>
+                            </Tooltip>
+                        </ActionsContainer>
+                    </CompactTableCell>
+                )}
+            </TableRow>
+            
+            {/* Expanded details row */}
+            <TableRow>
+                <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={12}>
+                    <Collapse in={open} timeout="auto" unmountOnExit>
+                        <Paper 
+                            sx={{ 
+                                margin: 2,
+                                padding: 3,
+                                backgroundColor: '#f8f9fa',
+                                border: '1px solid #e0e0e0',
+                                borderRadius: 2
+                            }}
+                            elevation={0}
+                        >
+                            <Grid container spacing={3}>
+                                {/* General rule information */}
+                                <Grid item xs={12} md={6}>
+                                    <Box sx={{ mb: 2 }}>
+                                        <Typography variant="h6" gutterBottom component="div" sx={{ display: 'flex', alignItems: 'center', color: '#1976d2' }}>
+                                            <Info sx={{ mr: 1 }} />
+                                            Rule Details
+                                        </Typography>
+                                        <Divider sx={{ mb: 2 }} />
+                                        
+                                        <Box sx={{ mb: 2 }}>
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Rule Name:
+                                            </Typography>
+                                            <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                                                {rule.rule_name}
+                                            </Typography>
+                                        </Box>
+                                        
+                                        <Box sx={{ mb: 2 }}>
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Rule Description:
+                                            </Typography>
+                                            <Typography variant="body1">
+                                                {rule.rule_info}
+                                            </Typography>
+                                        </Box>
+                                        
+                                        <Box sx={{ mb: 2 }}>
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Simple Description:
+                                            </Typography>
+                                            <Typography variant="body1" sx={{ 
+                                                backgroundColor: '#fffde7', 
+                                                p: 1, 
+                                                borderRadius: 1,
+                                                border: '1px solid #fff9c4'
+                                            }}>
+                                                {getRuleDescription()}
+                                            </Typography>
+                                        </Box>
+                                        
+                                        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
+                                            <Typography variant="subtitle2" color="text.secondary" sx={{ mr: 1 }}>
+                                                Status:
+                                            </Typography>
+                                            <Chip
+                                                icon={rule.status === 1 ? <CheckCircleIcon /> : <CancelIcon />}
+                                                label={rule.status === 1 ? 'Active' : 'Inactive'}
+                                                color={rule.status === 1 ? 'success' : 'error'}
+                                                variant="outlined"
+                                                size="small"
+                                                onClick={() => onToggleStatus(rule)}
+                                            />
+                                        </Box>
+                                        
+                                        <Box sx={{ mb: 2 }}>
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Risk Level:
+                                            </Typography>
+                                            <Chip
+                                                label={rule.business_risk || 'N/A'}
+                                                sx={{
+                                                    fontWeight: 'bold',
+                                                    color: 'white',
+                                                    backgroundColor: getRiskColor(rule.business_risk)
+                                                }}
+                                            />
+                                        </Box>
+                                        
+                                        <Box>
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Last Update:
+                                            </Typography>
+                                            <Typography variant="body2">
+                                                {new Date(rule.last_update).toLocaleString()}
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Grid>
+                                
+                                {/* Table data and conditions */}
+                                <Grid item xs={12} md={6}>
+                                    <Box sx={{ mb: 3 }}>
+                                        <Typography variant="h6" gutterBottom component="div" sx={{ display: 'flex', alignItems: 'center', color: '#1976d2' }}>
+                                            <TableChart sx={{ mr: 1 }} />
+                                            Table Data and Results
+                                        </Typography>
+                                        <Divider sx={{ mb: 2 }} />
+                                        
+                                        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
+                                            <Typography variant="subtitle2" color="text.secondary" sx={{ mr: 1 }}>
+                                                Source Table:
+                                            </Typography>
+                                            <Chip
+                                                label={rule.selected_table}
+                                                color="primary"
+                                                variant="outlined"
+                                                size="small"
+                                            />
+                                        </Box>
+                                        
+                                        <Box sx={{ mb: 2 }}>
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Matching / Total:
+                                            </Typography>
+                                            <Box sx={{ 
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                backgroundColor: '#e8f5e9',
+                                                p: 1,
+                                                borderRadius: 1,
+                                                border: '1px solid #c8e6c9'
+                                            }}>
+                                                <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#2e7d32', mr: 1 }}>
+                                                    {rule.matching_records}
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ color: '#1b5e20' }}>
+                                                    out of {rule.total_records} records 
+                                                    ({parseFloat(rule.impact_percentage || '0').toFixed(1)}%)
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                    </Box>
+                                    
+                                    <Box>
+                                        <Typography variant="h6" gutterBottom component="div" sx={{ display: 'flex', alignItems: 'center', color: '#1976d2' }}>
+                                            <CompareArrows sx={{ mr: 1 }} />
+                                            Rule Conditions
+                                        </Typography>
+                                        <Divider sx={{ mb: 2 }} />
+                                        
+                                        <Box sx={{ maxHeight: '200px', overflowY: 'auto', p: 1 }}>
+                                            {conditions.length > 0 ? (
+                                                conditions.map((condition, index) => (
+                                                    <Paper 
+                                                        key={index} 
+                                                        sx={{ 
+                                                            p: 1, 
+                                                            mb: 1, 
+                                                            backgroundColor: getComparisonColor(condition.comparison),
+                                                            border: '1px solid #e0e0e0'
+                                                        }}
+                                                        elevation={0}
+                                                    >
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                            <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                                                                Condition {index + 1}: {getComparisonName(condition.comparison)}
+                                                            </Typography>
+                                                            {index < conditions.length - 1 && condition.connector && (
+                                                                <Chip
+                                                                    label={condition.connector.toUpperCase()}
+                                                                    size="small"
+                                                                    color={condition.connector === 'and' ? 'primary' : 'secondary'}
+                                                                    sx={{ height: '20px', fontSize: '0.7rem' }}
+                                                                />
+                                                            )}
+                                                        </Box>
+                                                        
+                                                        <Divider sx={{ my: 0.5 }} />
+                                                        
+                                                        <Grid container spacing={1}>
+                                                            {/* Field */}
+                                                            <Grid item xs={4}>
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    Field:
+                                                                </Typography>
+                                                                <Typography variant="body2">
+                                                                    {Array.isArray(condition.field) 
+                                                                        ? condition.field.join(', ') 
+                                                                        : condition.field || 'N/A'}
+                                                                </Typography>
+                                                            </Grid>
+                                                            
+                                                            {/* Value */}
+                                                            {condition.value !== undefined && (
+                                                                <Grid item xs={8}>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        Value:
+                                                                    </Typography>
+                                                                    <Typography variant="body2" 
+                                                                        sx={{ 
+                                                                            wordBreak: 'break-word', 
+                                                                            backgroundColor: '#fff',
+                                                                            p: 0.5,
+                                                                            borderRadius: 0.5,
+                                                                            border: '1px solid #eee'
+                                                                        }}
+                                                                    >
+                                                                        {condition.value}
+                                                                    </Typography>
+                                                                </Grid>
+                                                            )}
+                                                            
+                                                            {/* Related table if applicable */}
+                                                            {condition.relatedTable && (
+                                                                <Grid item xs={12}>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        Related Table:
+                                                                    </Typography>
+                                                                    <Typography variant="body2">
+                                                                        {condition.relatedTable}
+                                                                    </Typography>
+                                                                </Grid>
+                                                            )}
+                                                            
+                                                            {/* Filter condition if applicable */}
+                                                            {condition.filterCondition && (
+                                                                <Grid item xs={12}>
+                                                                    <Typography variant="caption" color="text.secondary">
+                                                                        Filter:
+                                                                    </Typography>
+                                                                    <Typography variant="body2" sx={{ 
+                                                                        backgroundColor: '#fff3cd',
+                                                                        color: '#856404',
+                                                                        p: 0.5,
+                                                                        borderRadius: 0.5,
+                                                                        fontSize: '0.8rem',
+                                                                        fontStyle: 'italic'
+                                                                    }}>
+                                                                        {condition.filterCondition}
+                                                                    </Typography>
+                                                                </Grid>
+                                                            )}
+                                                        </Grid>
+                                                    </Paper>
+                                                ))
+                                            ) : (
+                                                <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+                                                    No conditions defined for this rule
+                                                </Typography>
+                                            )}
+                                        </Box>
+                                    </Box>
+                                </Grid>
+                            </Grid>
+                        </Paper>
+                    </Collapse>
+                </TableCell>
+            </TableRow>
+        </>
+    );
+};
 
 function RulesList() {
     // טעינת בחירת העמודות מה-LocalStorage או בחירה ברירת מחדל
@@ -371,102 +956,6 @@ function RulesList() {
         return sortConfig.direction;
     };
 
-    // פונקציה להצגת התנאים של החוק עם גובה מוגבל
-    const renderRuleConditions = (rule) => {
-        try {
-            const conditions = typeof rule.conditions === 'string' 
-                ? JSON.parse(rule.conditions) 
-                : rule.conditions;
-                    
-            if (!Array.isArray(conditions) || conditions.length === 0) {
-                return <Typography variant="body2" color="text.secondary">No conditions</Typography>;
-            }
-            
-            // Group conditions by comparison type
-            const conditionTypes = {};
-            
-            // Check for filter conditions in related_count
-            let hasFilterCondition = false;
-            let filterCondition = "";
-            
-            conditions.forEach(condition => {
-                const type = condition.comparison;
-                if (!conditionTypes[type]) conditionTypes[type] = 0;
-                conditionTypes[type]++;
-                
-                // Check for filter condition
-                if (type === 'related_count' && condition.filterCondition && condition.filterCondition.trim() !== '') {
-                    hasFilterCondition = true;
-                    filterCondition = condition.filterCondition;
-                }
-            });
-            
-            // במקום גלילה, נציג רק מספר מוגבל של תנאים
-            const maxDisplayConditions = 3; // מספר מקסימלי של תנאים להצגה
-            const conditionEntries = Object.entries(conditionTypes);
-            const visibleConditions = conditionEntries.slice(0, maxDisplayConditions);
-            const remainingCount = conditionEntries.length - maxDisplayConditions;
-            
-            return (
-                <Box sx={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    gap: 0.7,
-                    height: 'auto', // גובה אוטומטי ללא הגבלה
-                    overflow: 'visible' // ביטול הגלילה
-                }}>
-                    {visibleConditions.map(([type, count], index) => (
-                        <Chip
-                            key={index}
-                            label={`${getComparisonName(type)}${count > 1 ? ` (${count})` : ''}`}
-                            size="small"
-                            sx={{
-                                backgroundColor: getComparisonColor(type),
-                                fontSize: '0.8rem',
-                                height: '24px',
-                                mb: 0.5,
-                                fontWeight: 'medium'
-                            }}
-                        />
-                    ))}
-                    
-                    {/* אם יש יותר מהמספר המקסימלי, הצג חיווי לכמה נוספים */}
-                    {remainingCount > 0 && (
-                        <Chip
-                            label={`+${remainingCount} more...`}
-                            size="small"
-                            sx={{
-                                backgroundColor: '#eeeeee',
-                                fontSize: '0.8rem',
-                                height: '24px',
-                                mb: 0.5,
-                                fontStyle: 'italic'
-                            }}
-                        />
-                    )}
-                    
-                    {/* Add filter condition chip if exists - only if no remaining conditions or it's important */}
-                    {hasFilterCondition && (remainingCount === 0 || true) && (
-                        <Chip
-                            label={`Filter: ${filterCondition}`}
-                            size="small"
-                            sx={{
-                                backgroundColor: '#fff3cd',
-                                color: '#856404',
-                                fontSize: '0.8rem',
-                                height: '24px',
-                                fontStyle: 'italic'
-                            }}
-                        />
-                    )}
-                </Box>
-            );
-        } catch (error) {
-            console.error('Error parsing conditions:', error);
-            return <Typography variant="body2" color="error">Error parsing conditions</Typography>;
-        }
-    };
-
     const calculateConditionMatches = (result, conditions) => {
         return conditions.map((condition) => {
             if (condition.comparison === 'is_duplicate') {
@@ -565,116 +1054,110 @@ function RulesList() {
         }
     };
 
-// הפונקציה showQueryResults צריכה להיות מוגדרת לפני handleFetchRuleDetails שקוראת לה
-const showQueryResults = (result, queryData, rule) => {
-    if (!result?.records) return;
+    const showQueryResults = (result, queryData, rule) => {
+        if (!result?.records) return;
 
-    // לחשב את התאמות התנאים
-    const conditionMatches = calculateConditionMatches(result, queryData.conditions);
+        // לחשב את התאמות התנאים
+        const conditionMatches = calculateConditionMatches(result, queryData.conditions);
 
-    const newWindow = window.open('', '', 'width=900,height=700');
-    newWindow.document.write(`
-        <html>
-        <head>
-            <title>Query Results</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 20px; padding: 20px; }
-                h1 { color: #333; }
-                p { font-size: 14px; color: #555; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
-                th { background-color: #f2f2f2; }
-                tr:nth-child(even) { background-color: #f9f9f9; }
-                tr:hover { background-color: #f0f0f0; }
-                .result-info { margin-bottom: 20px; }
-                .conditions-box { background-color: #eef; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-                .condition-item { font-size: 14px; margin: 8px 0; }
-                .matching-count { color: #2196F3; margin-left: 10px; font-weight: bold; }
-            </style>
-        </head>
-        <body>
-            <h1>Query Results</h1>
-            <div class="result-info">
-                <p><strong>Rule Name:</strong> ${rule.rule_name}</p>
-                <p><strong>Rule Info:</strong> ${rule.rule_info}</p>
-                <p><strong>Records matching the query:</strong> ${result.records.length} / ${queryData.totalRecords}</p>
-                <p><strong>Query executed at:</strong> ${new Date().toLocaleString()}</p>
-                <p><strong>Table Name:</strong> ${queryData.selectedTable}</p>
-            </div>
+        const newWindow = window.open('', '', 'width=900,height=700');
+        newWindow.document.write(`
+            <html>
+            <head>
+                <title>Query Results</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; padding: 20px; }
+                    h1 { color: #333; }
+                    p { font-size: 14px; color: #555; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
+                    th { background-color: #f2f2f2; }
+                    tr:nth-child(even) { background-color: #f9f9f9; }
+                    tr:hover { background-color: #f0f0f0; }
+                    .result-info { margin-bottom: 20px; }
+                    .conditions-box { background-color: #eef; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+                    .condition-item { font-size: 14px; margin: 8px 0; }
+                    .matching-count { color: #2196F3; margin-left: 10px; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <h1>Query Results</h1>
+                <div class="result-info">
+                    <p><strong>Rule Name:</strong> ${rule.rule_name}</p>
+                    <p><strong>Rule Info:</strong> ${rule.rule_info}</p>
+                    <p><strong>Records matching the query:</strong> ${result.records.length} / ${queryData.totalRecords}</p>
+                    <p><strong>Query executed at:</strong> ${new Date().toLocaleString()}</p>
+                    <p><strong>Table Name:</strong> ${queryData.selectedTable}</p>
+                </div>
 
-            <div class="conditions-box">
-                <h3>Applied Conditions:</h3>
-                ${conditionMatches.map((item, index) => `
-                    <p class="condition-item">
-                        ${index + 1}. <strong>${Array.isArray(item.condition.field) ? item.condition.field.join(',') : item.condition.field}</strong> 
-                        ${item.condition.comparison} 
-                        ${item.condition.comparison === 'is_duplicate' ? '(Duplicate Check)' : `'${item.condition.value}'`}
-                        <span class="matching-count">(${item.count} records)</span>
-                    </p>
-                    ${item.condition.connector && index < conditionMatches.length - 1 
-                        ? `<p style="font-weight: bold; color: blue;"> ${item.condition.connector} </p>`
-                        : ''}`
-                ).join('')}
-            </div>
+                <div class="conditions-box">
+                    <h3>Applied Conditions:</h3>
+                    ${conditionMatches.map((item, index) => `
+                        <p class="condition-item">
+                            ${index + 1}. <strong>${Array.isArray(item.condition.field) ? item.condition.field.join(',') : item.condition.field}</strong> 
+                            ${item.condition.comparison} 
+                            ${item.condition.comparison === 'is_duplicate' ? '(Duplicate Check)' : `'${item.condition.value}'`}
+                            <span class="matching-count">(${item.count} records)</span>
+                        </p>
+                        ${item.condition.connector && index < conditionMatches.length - 1 
+                            ? `<p style="font-weight: bold; color: blue;"> ${item.condition.connector} </p>`
+                            : ''}`
+                    ).join('')}
+                </div>
 
-            ${result.records.length > 0 
-                ? `<table>
-                    <tr>${Object.keys(result.records[0]).map(key => `<th>${key}</th>`).join('')}</tr>
-                    ${result.records.map(row => `
-                        <tr>${Object.values(row).map(value => `<td>${value}</td>`).join('')}</tr>
-                    `).join('')}
-                   </table>`
-                : '<p>No records found.</p>'
-            }
-        </body>
-        </html>
-    `);
-};
-
-// שימו לב שבקובץ המקורי, הפונקציה handleFetchRuleDetails מוגדרת אחרי זה
-const handleFetchRuleDetails = async (rule) => {
-    // המר תנאים לפני השליחה
-    const conditions = typeof rule.conditions === "string" 
-        ? JSON.parse(rule.conditions) 
-        : rule.conditions;
-
-    const queryData = {
-        selectedTable: rule.selected_table,
-        conditions: conditions.map((condition, index) => ({
-            ...condition,
-            connector: index < conditions.length - 1 ? condition.connector : null,
-        })),
-        ruleId: rule.id,
-        totalRecords: rule.total_records || 0
+                ${result.records.length > 0 
+                    ? `<table>
+                        <tr>${Object.keys(result.records[0]).map(key => `<th>${key}</th>`).join('')}</tr>
+                        ${result.records.map(row => `
+                            <tr>${Object.values(row).map(value => `<td>${value}</td>`).join('')}</tr>
+                        `).join('')}
+                    </table>`
+                    : '<p>No records found.</p>'
+                }
+            </body>
+            </html>
+        `);
     };
 
-    // הדפס את פרטי השאילתה לבדיקה
-    console.log('🔍 נתוני שאילתה:', JSON.stringify(queryData, null, 2));
+    const handleFetchRuleDetails = async (rule) => {
+        // המר תנאים לפני השליחה
+        const conditions = typeof rule.conditions === "string" 
+            ? JSON.parse(rule.conditions) 
+            : rule.conditions;
 
-    try {
-        const response = await fetch('http://localhost:3001/query-db', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(queryData),
-        });
+        const queryData = {
+            selectedTable: rule.selected_table,
+            conditions: conditions.map((condition, index) => ({
+                ...condition,
+                connector: index < conditions.length - 1 ? condition.connector : null,
+            })),
+            ruleId: rule.id,
+            totalRecords: rule.total_records || 0
+        };
 
-        // הדפס את סטטוס התגובה
-        console.log('סטטוס תגובה:', response.status);
+        console.log('🔍 Query data:', JSON.stringify(queryData, null, 2));
 
-        if (!response.ok) {
-            // קבל את טקסט השגיאה המלאה
-            const errorText = await response.text();
-            console.error('❌ תגובת שגיאה מלאה:', errorText);
-            return;
+        try {
+            const response = await fetch('http://localhost:3001/query-db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queryData),
+            });
+
+            console.log('Response status:', response.status);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Full error response:', errorText);
+                return;
+            }
+
+            const result = await response.json();
+            showQueryResults(result, queryData, rule);
+        } catch (error) {
+            console.error('❌ Loading error:', error);
         }
-
-        const result = await response.json();
-        showQueryResults(result, queryData, rule);  // כעת הקריאה לפונקציה תהיה תקינה
-    } catch (error) {
-        // טיפול בשגיאות טעינה
-        console.error('❌ שגיאת טעינה:', error);
-    }
-};
+    };
     
     // טיפול בשינוי הגדרות העמודות הנראות
     const handleColumnChange = (event) => {
@@ -871,13 +1354,14 @@ const handleFetchRuleDetails = async (rule) => {
                 minWidth: 650, 
                 marginTop: '20px', 
                 borderCollapse: 'collapse',
-                tableLayout: 'fixed',
-                '& .MuiTableRow-root:hover': {
-                    backgroundColor: '#f5f5f5'
-                }
+                tableLayout: 'fixed'
             }} aria-label="rules table">
                 <TableHead>
                     <TableRow>
+                        {/* Expand column */}
+                        <TableCell style={{ width: '40px', padding: '0 8px', backgroundColor: '#1976d2', color: 'white' }}>
+                        </TableCell>
+                        
                         {visibleColumns.status && (
                             <CompactTableHeadCell 
                                 width="60px" 
@@ -973,235 +1457,15 @@ const handleFetchRuleDetails = async (rule) => {
 
                 <TableBody>
                     {sortedRules.map(rule => (
-                        <TableRow 
-                            key={rule.id} 
-                            sx={{ 
-                                height: '80px',
-                                // הוספת רקע שונה לחוקים לא פעילים
-                                backgroundColor: rule.status === 0 ? 'rgba(244, 67, 54, 0.04)' : 'inherit',
-                                opacity: rule.status === 0 ? 0.9 : 1
-                            }}
-                        >
-                            {visibleColumns.status && (
-                                <CompactTableCell>
-                                    <Tooltip title={rule.status === 1 ? 'Active' : 'Inactive'}>
-                                        <IconButton onClick={() => toggleStatus(rule)} size="small">
-                                            {rule.status === 1 ? (
-                                                <CheckCircleIcon style={{ color: 'green', fontSize: '24px' }} />
-                                            ) : (
-                                                <CancelIcon style={{ color: 'red', fontSize: '24px' }} />
-                                            )}
-                                        </IconButton>
-                                    </Tooltip>
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.id && (
-                                <CompactTableCell>
-                                    <Typography variant="body1" fontWeight="medium">
-                                        {rule.id}
-                                    </Typography>
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.ruleName && (
-                                <CompactTableCell>
-                                    <Typography variant="body1" fontWeight="medium">
-                                        {rule.rule_name}
-                                    </Typography>
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.ruleInfo && (
-                                <InfoTableCell>
-                                    <Typography 
-                                        variant="body2" 
-                                        sx={{ 
-                                            maxHeight: '70px', // הגדלת גובה מקסימלי
-                                            overflow: 'auto',
-                                            padding: '5px',
-                                            backgroundColor: '#fafafa',
-                                            borderRadius: '4px',
-                                            border: '1px solid #f0f0f0'
-                                        }}
-                                    >
-                                        {rule.rule_info}
-                                    </Typography>
-                                </InfoTableCell>
-                            )}
-                            
-                            {visibleColumns.comparison && (
-                                <CompactTableCell sx={{ overflow: 'visible' }}>
-                                    {renderRuleConditions(rule)}
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.sourceTable && (
-                                <CompactTableCell>
-                                    <Box sx={{ 
-                                        display: 'flex', 
-                                        flexDirection: 'column', 
-                                        gap: 0.7,
-                                        backgroundColor: '#f5f5f5',
-                                        padding: '6px',
-                                        borderRadius: '6px',
-                                        maxHeight: '70px',
-                                        overflow: 'auto'
-                                    }}>
-                                        <Typography 
-                                            variant="body2" 
-                                            sx={{ 
-                                                fontWeight: 'bold', 
-                                                color: '#1976d2',
-                                                fontSize: '0.85rem'
-                                            }}
-                                        >
-                                            {rule.selected_table || rule.sourceTable || 'N/A'}
-                                        </Typography>
-                                        {rule.conditions && (
-                                            () => {
-                                                const relatedTables = (typeof rule.conditions === 'string' 
-                                                    ? JSON.parse(rule.conditions) 
-                                                    : rule.conditions)
-                                                    .filter(c => c.relatedTable)
-                                                    .map(c => c.relatedTable);
-                                                
-                                                return relatedTables.length > 0 ? (
-                                                    <Typography 
-                                                        variant="caption" 
-                                                        sx={{ 
-                                                            color: '#666',
-                                                            fontStyle: 'italic',
-                                                            fontSize: '0.75rem'
-                                                        }}
-                                                    >
-                                                        Related: {relatedTables.join(', ')}
-                                                    </Typography>
-                                                ) : null;
-                                            })()
-                                        }
-                                    </Box>
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.matchTotal && (
-                                <CompactTableCell>
-                                    <Box sx={{ 
-                                        backgroundColor: '#e8f4fd', 
-                                        padding: '6px 10px', 
-                                        borderRadius: '4px',
-                                        display: 'inline-block'
-                                    }}>
-                                        <Typography variant="body2" fontWeight="bold">
-                                            {rule.matching_records !== null ? rule.matching_records : 'N/A'} / {rule.total_records !== null ? rule.total_records : 'N/A'}
-                                        </Typography>
-                                    </Box>
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.impactPercentage && (
-                                <CompactTableCell>
-                                    <Box sx={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        backgroundColor: '#f8f8f8',
-                                        padding: '6px 10px',
-                                        borderRadius: '4px',
-                                        border: '1px solid #e0e0e0',
-                                        minWidth: '70px'
-                                    }}>
-                                        <Typography 
-                                            variant="body2"
-                                            style={{ 
-                                                fontWeight: 'bold',
-                                                color: getImpactColor(rule.impact_percentage || rule.optimizationData?.quantitativeImpact?.impactPercentage || 0)
-                                            }}
-                                        >
-                                            {rule.impact_percentage || 
-                                            (rule.optimizationData?.quantitativeImpact?.impactPercentage 
-                                                ? `${rule.optimizationData.quantitativeImpact.impactPercentage}%` 
-                                                : 'N/A')}
-                                        </Typography>
-                                    </Box>
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.riskLevel && (
-                                <CompactTableCell>
-                                    <Chip
-                                        label={rule.business_risk || rule.optimizationData?.businessRisk || 'N/A'}
-                                        size="small"
-                                        sx={{
-                                            fontWeight: 'bold',
-                                            color: 'white',
-                                            backgroundColor: getRiskColor(rule.business_risk || rule.optimizationData?.businessRisk || 'N/A'),
-                                            padding: '2px',
-                                            height: '28px'
-                                        }}
-                                    />
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.lastUpdate && (
-                                <CompactTableCell>
-                                    <Typography 
-                                        variant="body2"
-                                        sx={{
-                                            backgroundColor: '#f0f0f0',
-                                            padding: '5px 8px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.85rem'
-                                        }}
-                                    >
-                                        {new Date(rule.last_update).toLocaleString()}
-                                    </Typography>
-                                </CompactTableCell>
-                            )}
-                            
-                            {visibleColumns.actions && (
-                                <CompactTableCell>
-                                    <ActionsContainer>
-                                        <Tooltip title="Display Query Results">
-                                            <IconButton 
-                                                color="primary" 
-                                                onClick={() => handleFetchRuleDetails(rule)}
-                                                sx={{
-                                                    backgroundColor: 'rgba(25, 118, 210, 0.08)',
-                                                    margin: '0 4px'
-                                                }}
-                                            >
-                                                <DynamicFeedRounded style={{ color: '#1976d2', fontSize: '22px' }} />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Edit Rule">
-                                            <IconButton 
-                                                color="primary" 
-                                                onClick={() => navigate(`/rules/update/${rule.id}`)}
-                                                sx={{
-                                                    backgroundColor: 'rgba(76, 175, 80, 0.08)',
-                                                    margin: '0 4px'
-                                                }}
-                                            >
-                                                <TuneRounded style={{ color: '#4caf50', fontSize: '22px' }} />
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Delete Rule">
-                                            <IconButton 
-                                                color="error" 
-                                                onClick={() => handleDeleteClick(rule.id)}
-                                                sx={{
-                                                    backgroundColor: 'rgba(244, 67, 54, 0.08)',
-                                                    margin: '0 4px'
-                                                }}
-                                            >
-                                                <DeleteSweepRounded style={{ color: '#f44336', fontSize: '22px' }} />
-                                            </IconButton>
-                                        </Tooltip>
-                                    </ActionsContainer>
-                                </CompactTableCell>
-                            )}
-                        </TableRow>
+                        <ExpandableRuleRow 
+                            key={rule.id}
+                            rule={rule}
+                            visibleColumns={visibleColumns}
+                            onToggleStatus={toggleStatus}
+                            onDelete={handleDeleteClick}
+                            onEdit={(id) => navigate(`/rules/update/${id}`)}
+                            onShowResults={handleFetchRuleDetails}
+                        />
                     ))}
                 </TableBody>
             </Table>

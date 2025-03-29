@@ -781,103 +781,189 @@ const fetchTableFields = async (server, database, table) => {
     }
   };
 
-  // View data from source table with support for renamed fields
-  const handleViewDataClick = async () => {
-    setIsLoading(true);
-    try {
-      if (!selectedTable) {
-        showSnackbar('Please select a table first.', 'error');
+// View data from source table with support for renamed fields
+const handleViewDataClick = async () => {
+  setIsLoading(true);
+  try {
+    // Basic validation checks
+    if (!selectedTable) {
+      showSnackbar('Please select a table first', 'error');
+      setIsLoading(false);
+      return;
+    }
+    
+    if (!importServerName || !importDatabaseName) {
+      showSnackbar('Source server details are missing', 'error');
+      setIsLoading(false);
+      return;
+    }
+    
+    if (Object.keys(fieldMappings).length === 0) {
+      showSnackbar('No fields selected for mapping. Please drag at least one field to the mapping area', 'error');
+      setIsLoading(false);
+      return;
+    }
+
+    // Prepare request data
+    const requestData = {
+      serverName: importServerName,
+      databaseName: importDatabaseName,
+      tableName: selectedTable,
+      mappedFields: Object.keys(fieldMappings),
+    };
+    
+    // Add debug log
+    console.log('Sending request to get table data:', requestData);
+
+    // Send the request
+    const response = await axios.post('http://localhost:3001/get-table-data', requestData);
+
+    // Check if the request succeeded
+    if (response.data.success) {
+      const data = response.data.data;
+      
+      // Check if there is data
+      if (!data || data.length === 0) {
+        showSnackbar('The table is empty - no data to display', 'warning');
         setIsLoading(false);
         return;
       }
 
-      // Request to get data - use original names for the request
-      const requestData = {
-        serverName: importServerName,
-        databaseName: importDatabaseName,
-        tableName: selectedTable,
-        mappedFields: Object.keys(fieldMappings),
-      };
-
-      const response = await axios.post('http://localhost:3001/get-table-data', requestData);
-
-      if (response.data.success) {
-        const data = response.data.data;
-        if (data.length === 0) {
-          showSnackbar('No data available in the selected table.', 'error');
-          setIsLoading(false);
-          return;
-        }
-
-        // Create HTML table for data display
-        let tableHeaders = '';
-        let tableRows = '';
-        
-        const originalHeaders = Object.keys(data[0]);
-        
-        // Create table headers - use new names for display
+      // Process and display data
+      let tableHeaders = '';
+      let tableRows = '';
+      
+      const originalHeaders = Object.keys(data[0]);
+      
+      // Create table headers - with custom names if defined
+      originalHeaders.forEach(header => {
+        const displayHeader = renamedFields[header] || header;
+        tableHeaders += `<th style="padding: 10px; border: 1px solid #ddd; background-color: #4a89dc; color: white;">${displayHeader}</th>`;
+      });
+      
+      // Create table rows
+      data.slice(0, 100).forEach((row, index) => {
+        let tableRow = `<tr style="background-color: ${index % 2 === 0 ? '#f9f9f9' : 'white'};">`;
         originalHeaders.forEach(header => {
-          // Check if there's a custom name for this field
-          const displayHeader = renamedFields[header] || header;
-          tableHeaders += `<th style="padding: 10px; border: 1px solid #ddd;">${displayHeader}</th>`;
+          const cellValue = row[header] !== null ? String(row[header]) : '<em style="color: #999;">NULL</em>';
+          tableRow += `<td style="padding: 10px; border: 1px solid #ddd;">${cellValue}</td>`;
         });
-        
-        // Create table rows
-        data.slice(0, 50).forEach(row => {
-          let tableRow = '<tr>';
-          originalHeaders.forEach(header => {
-            tableRow += `<td style="padding: 10px; border: 1px solid #ddd;">${row[header] !== null ? row[header] : 'NULL'}</td>`;
-          });
-          tableRow += '</tr>';
-          tableRows += tableRow;
-        });
-        
-        // Create full HTML with customized field names
-        const fullHTML = `
-        <html>
-          <head>
-            <title>Data Preview - ${selectedTable}</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              h1 { color: #2196F3; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th { background-color: #2196F3; color: white; text-align: left; }
-              tr:nth-child(even) { background-color: #f2f2f2; }
-            </style>
-          </head>
-          <body>
-            <h1>Data Preview - ${selectedTable}</h1>
-            <p>Showing ${Math.min(data.length, 50)} of ${data.length} records</p>
-            <table>
-              <thead>
-                <tr>${tableHeaders}</tr>
-              </thead>
-              <tbody>
-                ${tableRows}
-              </tbody>
-            </table>
-          </body>
-        </html>
-        `;
+        tableRow += '</tr>';
+        tableRows += tableRow;
+      });
+      
+      // Create the full HTML
+      const fullHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Data View - ${selectedTable}</title>
+          <meta charset="UTF-8">
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              padding: 20px; 
+              direction: ltr;
+            }
+            h1 { 
+              color: #2196F3; 
+              border-bottom: 2px solid #e0e0e0;
+              padding-bottom: 10px;
+            }
+            .info {
+              background-color: #e3f2fd;
+              padding: 10px;
+              border-radius: 4px;
+              margin-bottom: 20px;
+            }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-top: 20px;
+              box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            }
+            th { 
+              background-color: #4a89dc; 
+              color: white; 
+              text-align: left;
+              padding: 12px 10px;
+            }
+            tr:nth-child(even) { 
+              background-color: #f2f2f2; 
+            }
+            tr:hover {
+              background-color: #e8f4fc;
+            }
+            .footer {
+              margin-top: 20px;
+              color: #666;
+              font-size: 0.9em;
+              text-align: center;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Data View - ${selectedTable}</h1>
+          <div class="info">
+            <p><strong>Server:</strong> ${importServerName}</p>
+            <p><strong>Database:</strong> ${importDatabaseName}</p>
+            <p><strong>Showing</strong> ${Math.min(data.length, 100)} of ${data.length} records</p>
+          </div>
+          <table>
+            <thead>
+              <tr>${tableHeaders}</tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <div class="footer">
+            <p>Created using Generic Monitor System</p>
+          </div>
+        </body>
+      </html>
+      `;
 
-        const newWindow = window.open('', '_blank', 'width=800,height=600');
-        if (newWindow) {
-          newWindow.document.open();
-          newWindow.document.write(fullHTML);
-          newWindow.document.close();
-        } else {
-          showSnackbar('Failed to open new window. Please check your popup blocker settings.', 'error');
-        }
+      // Open a new window and display the data
+      const newWindow = window.open('', '_blank', 'width=1000,height=800');
+      if (newWindow) {
+        newWindow.document.open();
+        newWindow.document.write(fullHTML);
+        newWindow.document.close();
       } else {
-        showSnackbar('Failed to load table data.', 'error');
+        showSnackbar('Browser blocked popup window. Please allow popups', 'error');
       }
-    } catch (error) {
-      console.error('Error loading table data:', error);
-      showSnackbar(`Error loading table data: ${error.message}`, 'error');
-    } finally {
-      setIsLoading(false);
+    } else {
+      // Handle error from server
+      const errorMessage = response.data.message || 'Error loading table data';
+      showSnackbar(errorMessage, 'error');
     }
-  };
+  } catch (error) {
+    // Handle network or other error
+    console.error('Error loading table data:', error);
+    
+    // Show user-friendly message
+    let errorMessage = 'Error loading table data: ';
+    
+    if (error.response) {
+      // Server responded with error code
+      errorMessage += `Server responded with error code ${error.response.status}`;
+      if (error.response.status === 404) {
+        errorMessage += '. The API path may be incorrect or the server does not define this endpoint';
+      }
+    } else if (error.request) {
+      // Request was sent but no response was received
+      errorMessage += 'No response received from server. Check if the server is running and accessible';
+    } else {
+      // Error in setting up the request
+      errorMessage += error.message || 'Unknown error';
+    }
+    
+    showSnackbar(errorMessage, 'error');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Show snackbar message
   const showSnackbar = (message, severity = 'info') => {

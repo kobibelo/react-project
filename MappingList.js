@@ -29,7 +29,11 @@ import {
   FormControlLabel,
   Chip,
   ToggleButtonGroup,
-  ToggleButton
+  ToggleButton,
+  Grid,
+  Paper,
+  Tab,
+  Tabs
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -86,8 +90,8 @@ const SortableHeadCell = styled(TableCell)(({ sortDirection }) => ({
         backgroundColor: '#1565c0',
     },
     '&::after': {
-        content: sortDirection === 'ascending' ? '"▲"' : 
-                 sortDirection === 'descending' ? '"▼"' : '""',
+        content: sortDirection === 'asc' ? '"▲"' : 
+                 sortDirection === 'desc' ? '"▼"' : '""',
         position: 'absolute',
         right: '8px',
         top: '50%',
@@ -149,8 +153,9 @@ const COLUMNS_STORAGE_KEY = 'mappingListVisibleColumns';
 const SORT_STORAGE_KEY = 'mappingListSortPreferences';
 const FILTER_STORAGE_KEY = 'mappingListFilterPreferences';
 
+
 function MappingList() {
-    // טעינת בחירת העמודות מה-LocalStorage או בחירה ברירת מחדל
+
     const getSavedColumns = () => {
         const savedColumns = localStorage.getItem(COLUMNS_STORAGE_KEY);
         if (savedColumns) {
@@ -160,16 +165,30 @@ function MappingList() {
                 console.error('Error parsing saved columns from localStorage:', e);
             }
         }
-        // בחירת עמודות ברירת מחדל אם אין שמורות
+        
+        // רק העמודות שקיימות בנתונים
         return {
             status: true,
             id: true,
+            mappingName: true,
             sourceServer: true,
+            exportServer: true,
             newTableName: true,
             lastUpdate: true,
             actions: true
         };
     };
+
+
+    //  פונקציה לאיפוס הגדרות העמודות
+    const resetColumnPreferences = () => {
+        localStorage.removeItem(COLUMNS_STORAGE_KEY);
+        const defaultColumns = getSavedColumns();
+        setVisibleColumns(defaultColumns);
+        localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(defaultColumns));
+        showSnackbar('Column preferences have been reset to defaults', 'success');
+    };
+
 
     const [allMappings, setAllMappings] = useState([]); // מאגר כל המיפויים לפני פילטור
     const [mappings, setMappings] = useState([]);
@@ -182,7 +201,154 @@ function MappingList() {
     const [visibleColumns, setVisibleColumns] = useState(getSavedColumns);
     const [columnSelectorOpen, setColumnSelectorOpen] = useState(false);
     const [selectedAll, setSelectedAll] = useState(false);
-    
+    const [fieldMappingDialogOpen, setFieldMappingDialogOpen] = useState(false);
+    const [selectedFieldMappings, setSelectedFieldMappings] = useState(null);
+    const [selectedMappingName, setSelectedMappingName] = useState('');
+    const [mappingDetailsDialogOpen, setMappingDetailsDialogOpen] = useState(false);
+    const [selectedMappingDetails, setSelectedMappingDetails] = useState(null);
+    const [mappingTableData, setMappingTableData] = useState(null);
+    const [activeTab, setActiveTab] = useState(0);
+
+    // פונקציה לפתיחת דיאלוג הפרטים
+    const handleViewDetailsClick = async (mappingId, event) => {
+        if (event) {
+            event.stopPropagation(); // מניעת בחירת השורה
+        }
+        
+        try {
+            setIsLoading(true);
+            
+            // 1. נשיג את המידע המלא של המיפוי
+            const response = await axios.get(`http://localhost:3001/mapping/get/${mappingId}`);
+            
+            if (response.data.success && response.data.mapping) {
+                console.log('API Response Data:', response.data.mapping);
+                console.log('Source Table Value:', response.data.mapping.source_table);
+                const fullMapping = response.data.mapping;
+                
+                // 2. פענוח שדה מיפויי השדות
+                let fieldMappings;
+                try {
+                    fieldMappings = typeof fullMapping.field_mappings === 'string' 
+                        ? JSON.parse(fullMapping.field_mappings) 
+                        : fullMapping.field_mappings;
+                    
+                    // הוספת טיפול מיוחד במקרה שהמבנה אינו מתאים למצופה
+                    if (fieldMappings && typeof fieldMappings === 'object') {
+                        // אם יש את המבנה החדש עם source, target, mappings
+                        if (fieldMappings.source && fieldMappings.target && fieldMappings.mappings) {
+                            // זה כבר המבנה הנכון, לא צריך לעשות דבר
+                        } 
+                        // אם זה המבנה הישן שהוא אובייקט פשוט של שדה-מקור => שדה-יעד
+                        else {
+                            // המרה למבנה החדש
+                            const enhancedFieldMappings = {
+                                source: {
+                                    database: fullMapping.import_database,
+                                    table: fullMapping.source_table,
+                                    fields: []
+                                },
+                                target: {
+                                    database: fullMapping.export_database,
+                                    table: fullMapping.new_table_name,
+                                    fields: []
+                                },
+                                mappings: {}
+                            };
+                            
+                            // המרת המיפויים למבנה החדש
+                            for (const [sourceField, targetInfo] of Object.entries(fieldMappings)) {
+                                // אם targetInfo הוא אובייקט, יש לנו כבר מידע מפורט
+                                if (typeof targetInfo === 'object') {
+                                    enhancedFieldMappings.mappings[sourceField] = targetInfo;
+                                } 
+                                // אחרת זה פשוט שם השדה או מחרוזת
+                                else {
+                                    enhancedFieldMappings.mappings[sourceField] = {
+                                        newName: targetInfo || sourceField,
+                                        tableName: fullMapping.source_table,
+                                        dbName: fullMapping.import_database
+                                    };
+                                }
+                                
+                                // הוספת השדה לרשימת שדות המקור
+                                enhancedFieldMappings.source.fields.push({
+                                    name: sourceField,
+                                    tableName: fullMapping.source_table,
+                                    dbName: fullMapping.import_database
+                                });
+                                
+                                // הוספת השדה לרשימת שדות היעד
+                                enhancedFieldMappings.target.fields.push({
+                                    name: typeof targetInfo === 'object' ? targetInfo.newName : (targetInfo || sourceField),
+                                    tableName: fullMapping.new_table_name,
+                                    dbName: fullMapping.export_database
+                                });
+                            }
+                            
+                            fieldMappings = enhancedFieldMappings;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing field mappings', e);
+                    fieldMappings = {};
+                }
+                
+                // 3. שמירת המידע במצב
+                setSelectedMappingDetails({
+                    ...fullMapping,
+                    fieldMappings
+                });
+                
+                // 4. ניסיון לקבל נתוני טבלה מהשרת (עד 100 שורות) - נשתמש בטבלת היעד
+                try {
+                    // בדיקה אם יש מספיק מידע לשאילתה של טבלת היעד
+                    if (fullMapping.export_server && fullMapping.new_table_name) {
+                        console.log(`Fetching destination table data: ${fullMapping.export_server}/${fullMapping.export_database || 'data_mapping_db'}/${fullMapping.new_table_name}`);
+                        
+                        const tableDataResponse = await axios.get('http://localhost:3001/get-table-data', {
+                            params: {
+                                server: fullMapping.export_server,             // שרת היעד
+                                database: fullMapping.export_database || 'data_mapping_db', // מסד נתונים יעד
+                                table: fullMapping.new_table_name,             // טבלת היעד
+                                limit: 100                                     // הגבלה ל-100 שורות
+                            }
+                        });
+                        
+                        if (tableDataResponse.data.success) {
+                            setMappingTableData(tableDataResponse.data.data || []);
+                        } else {
+                            console.error('Failed to fetch destination table data:', tableDataResponse.data.message);
+                            setMappingTableData([]);
+                        }
+                    } else {
+                        console.warn(`Missing destination info: Server=${fullMapping.export_server}, Table=${fullMapping.new_table_name}`);
+                        setMappingTableData([]);
+                    }
+                } catch (error) {
+                    console.error('Error fetching destination table data:', error);
+                    setMappingTableData([]);
+                }
+                
+                // 5. פתיחת הדיאלוג
+                setMappingDetailsDialogOpen(true);
+            } else {
+                showSnackbar('Failed to fetch mapping details', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching mapping details:', error);
+            showSnackbar('Error loading mapping details', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // פונקציה לסגירת הדיאלוג
+    const handleCloseMappingDetailsDialog = () => {
+        setMappingDetailsDialogOpen(false);
+        setSelectedMappingDetails(null);
+        setMappingTableData(null);
+    };
     // מצב פילטר סטטוס להצגת מיפויים פעילים/לא פעילים
     const [statusFilter, setStatusFilter] = useState(() => {
         const savedFilter = localStorage.getItem(FILTER_STORAGE_KEY);
@@ -212,15 +378,70 @@ function MappingList() {
     
     const navigate = useNavigate();
     
-    // רשימת כל העמודות האפשריות עם מידע על מפתח המיון
-    const allColumns = [
-        { id: 'status', label: 'Status', sortKey: 'status' },
-        { id: 'id', label: 'ID', sortKey: 'id' },
-        { id: 'sourceServer', label: 'Source Server', sortKey: 'import_server' },
-        { id: 'newTableName', label: 'New Table Name', sortKey: 'new_table_name' },
-        { id: 'lastUpdate', label: 'Last Update', sortKey: 'last_update' },
-        { id: 'actions', label: 'Actions', sortKey: null } // לא ניתן למיון
-    ];
+// עדכון רשימת העמודות להתאמה לנתונים האמיתיים
+const allColumns = [
+    { id: 'status', label: 'Status', sortKey: 'status' },
+    { id: 'id', label: 'ID', sortKey: 'id' },
+    { id: 'mappingName', label: 'Mapping Name', sortKey: 'mapping_name' },
+    
+    // שדות מקור
+    { id: 'sourceServer', label: 'Source Server', sortKey: 'import_server' },
+    
+    // שדות יעד
+    { id: 'exportServer', label: 'Destination Server', sortKey: 'export_server' },
+    { id: 'newTableName', label: 'New Table Name', sortKey: 'new_table_name' },
+    
+    // מידע נוסף
+    { id: 'lastUpdate', label: 'Last Update', sortKey: 'last_update' },
+    
+    { id: 'actions', label: 'Actions', sortKey: null }
+];
+
+
+    // פונקציה לטיפול בפתיחת דיאלוג מיפויי השדות
+    const handleFieldMappingsClick = async (mappingId, mappingName, event) => {
+        if (event) {
+            event.stopPropagation(); // מניעת בחירת השורה
+        }
+        
+        try {
+            setIsLoading(true);
+            // נשיג את המידע המלא של המיפוי
+            const response = await axios.get(`http://localhost:3001/mapping/get/${mappingId}`);
+            
+            if (response.data.success && response.data.mapping) {
+                const fullMapping = response.data.mapping;
+                let fieldMappings;
+                
+                // פענוח שדה מיפויי השדות
+                try {
+                    fieldMappings = typeof fullMapping.field_mappings === 'string' 
+                        ? JSON.parse(fullMapping.field_mappings) 
+                        : fullMapping.field_mappings;
+                } catch (e) {
+                    console.error('Error parsing field mappings', e);
+                    fieldMappings = fullMapping.field_mappings || {};
+                }
+                
+                setSelectedFieldMappings(fieldMappings);
+                setSelectedMappingName(mappingName || `Mapping ${mappingId}`);
+                setFieldMappingDialogOpen(true);
+            } else {
+                showSnackbar('Failed to fetch field mappings', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching field mappings:', error);
+            showSnackbar('Error loading field mappings', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // פונקציה לסגירת דיאלוג מיפויי השדות
+    const handleCloseFieldMappingsDialog = () => {
+        setFieldMappingDialogOpen(false);
+        setSelectedFieldMappings(null);
+    };
 
     // בדיקה האם כל העמודות נבחרו
     useEffect(() => {
@@ -232,26 +453,53 @@ function MappingList() {
         loadMappings();
     }, []);
 
-    const loadMappings = () => {
-        setIsLoading(true);
-        // שינינו את הפרמטרים כך שנקבל גם מיפויים לא פעילים
-        axios.get('http://localhost:3001/mapping/list', {
-            params: {
-                includeInactive: true
-            }
-        })
-        .then(response => {
-            const mappingsData = response.data.mappings || [];
-            setAllMappings(mappingsData);
-            setIsLoading(false);
-        })
-        .catch(error => {
-            console.error('Error fetching mappings:', error);
-            showSnackbar('Error fetching mappings list', 'error');
-            setIsLoading(false);
-            setAllMappings([]); // ניקוי במקרה של שגיאה
-        });
-    };
+ // הוספת קוד לבדיקת מבנה הנתונים ב-loadMappings
+const loadMappings = () => {
+    setIsLoading(true);
+    axios.get('http://localhost:3001/mapping/list', {
+        params: {
+            includeInactive: true
+        }
+    })
+    .then(response => {
+        const mappingsData = response.data.mappings || [];
+        
+        // בדיקת מבנה הנתונים שמתקבלים מהשרת
+        console.log('Full API response:', response.data);
+        
+        if (mappingsData.length > 0) {
+            const firstMapping = mappingsData[0];
+            console.log('First mapping keys:', Object.keys(firstMapping));
+            
+            // בדיקה האם צריך לעדכן את שמות השדות בנתונים
+            // ייתכן שהשרת מחזיר שמות שדות שונים ממה שאנחנו מחפשים
+            const processedMappings = mappingsData.map(mapping => {
+                // בדיקה למקרה שהשדות הנחוצים אינם קיימים בתשובת השרת
+                // ייתכן שצריך להתאים את שמות השדות
+                
+                // מיפוי ישיר של שדות שונים (במידה ויש שמות שדות אחרים)
+                return {
+                    ...mapping,
+                    // במידה ויש שמות שדות שונים בתשובת השרת, נמפה אותם כאן
+                    // לדוגמה: אם השדה נקרא import_db במקום import_database
+                    import_database: mapping.import_database || mapping.import_db || mapping.source_database || ''
+                };
+            });
+            
+            console.log('Processed first mapping:', processedMappings[0]);
+            setAllMappings(processedMappings);
+        } else {
+            setAllMappings([]);
+        }
+        setIsLoading(false);
+    })
+    .catch(error => {
+        console.error('Error fetching mappings:', error);
+        showSnackbar('Error fetching mappings list', 'error');
+        setIsLoading(false);
+        setAllMappings([]);
+    });
+};
     
     // פילטור המיפויים לפי הסטטוס הנבחר
     useEffect(() => {
@@ -327,13 +575,14 @@ function MappingList() {
         localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(newSortConfig));
     };
     
-    // פונקציה להחזרת כיוון המיון הנוכחי לעמודה מסוימת
-    const getSortDirection = (columnKey) => {
-        if (!columnKey || sortConfig.key !== columnKey) {
-            return null;
-        }
-        return sortConfig.direction;
-    };
+            // פונקציה להחזרת כיוון המיון הנוכחי לעמודה מסוימת
+        const getSortDirection = (columnKey) => {
+            if (!columnKey || sortConfig.key !== columnKey) {
+                return false;
+            }
+            // המרה מהערכים שלנו לערכים התקניים של MUI
+            return sortConfig.direction === 'ascending' ? 'asc' : 'desc';
+        };
 
     const handleRowClick = (mappingId) => {
         setSelectedMappings(prev => {
@@ -931,151 +1180,175 @@ function MappingList() {
                     backgroundColor: '#f5f5f5'
                 }
             }} aria-label="mapping table">
-            <TableHead>
-                <TableRow>
-                    {/* עמודה ריקה עבור אינדיקטור הבחירה */}
-                    <CompactHeadCell sx={{ width: '20px', padding: '0 12px' }}></CompactHeadCell>
-                    
-                    {visibleColumns.status && (
-                        <CompactHeadCell 
-                            width="60px" 
-                            onClick={() => requestSort('status')}
-                            sortDirection={getSortDirection('status')}
-                        >
-                            Status
-                        </CompactHeadCell>
-                    )}
-                    
-                    {visibleColumns.id && (
-                        <CompactHeadCell 
-                            width="50px"
-                            onClick={() => requestSort('id')}
-                            sortDirection={getSortDirection('id')}
-                        >
-                            ID
-                        </CompactHeadCell>
-                    )}
-                    
-                    {visibleColumns.sourceServer && (
-                        <SortableHeadCell 
-                            onClick={() => requestSort('import_server')}
-                            sortDirection={getSortDirection('import_server')}
-                        >
-                            Source Server
-                        </SortableHeadCell>
-                    )}
-                    
-                    {visibleColumns.newTableName && (
-                        <SortableHeadCell 
-                            onClick={() => requestSort('new_table_name')}
-                            sortDirection={getSortDirection('new_table_name')}
-                        >
-                            New Table Name
-                        </SortableHeadCell>
-                    )}
-                    
-                    {visibleColumns.lastUpdate && (
-                        <SortableHeadCell 
-                            onClick={() => requestSort('last_update')}
-                            sortDirection={getSortDirection('last_update')}
-                        >
-                            Last Update
-                        </SortableHeadCell>
-                    )}
-                    
-                    {visibleColumns.actions && (
-                        <SortableHeadCell>
-                            Actions
-                        </SortableHeadCell>
-                    )}
-                </TableRow>
-            </TableHead>
-
-            <TableBody>
-                {sortedMappings.map(mapping => (
-                    <TableRow 
-                        key={mapping.id}
-                        onClick={() => handleRowClick(mapping.id)}
-                        hover
-                        sx={{ 
-                            cursor: 'pointer',
-                            // רק רקע בהיר לשורות נבחרות ללא מסגרת
-                            backgroundColor: selectedMappings.includes(mapping.id) ? 'rgba(25, 118, 210, 0.04)' : 'inherit',
-                            '&:hover': {
-                                backgroundColor: selectedMappings.includes(mapping.id) ? 'rgba(25, 118, 210, 0.08)' : 'rgba(0, 0, 0, 0.04)',
-                            }
-                        }}
-                    >
-                        {/* נוסף תא עם אינדיקטור בחירה (נקודה) */}
-                        <SelectionIndicatorCell>
-                            {selectedMappings.includes(mapping.id) && <SelectionIndicator />}
-                        </SelectionIndicatorCell>
+                <TableHead>
+                    <TableRow>
+                        {/* עמודה ריקה עבור אינדיקטור הבחירה */}
+                        <CompactHeadCell sx={{ width: '20px', padding: '0 12px' }}></CompactHeadCell>
                         
                         {visibleColumns.status && (
-                            <StyledTableCell onClick={(e) => e.stopPropagation()}>
-                                <IconButton 
-                                    onClick={(e) => handleStatusToggle(mapping.id, mapping.status, e)}
-                                    size="small"
-                                >
-                                    <StatusIcon status={mapping.status} />
-                                </IconButton>
-                            </StyledTableCell>
+                            <CompactHeadCell 
+                                width="60px" 
+                                onClick={() => requestSort('status')}
+                                sortDirection={getSortDirection('status')}
+                            >
+                                Status
+                            </CompactHeadCell>
                         )}
                         
                         {visibleColumns.id && (
-                            <StyledTableCell>{mapping.id}</StyledTableCell>
+                            <CompactHeadCell 
+                                width="50px"
+                                onClick={() => requestSort('id')}
+                                sortDirection={getSortDirection('id')}
+                            >
+                                ID
+                            </CompactHeadCell>
+                        )}
+
+                        {visibleColumns.mappingName && (
+                            <SortableHeadCell 
+                                onClick={() => requestSort('mapping_name')}
+                                sortDirection={getSortDirection('mapping_name')}
+                            >
+                                Mapping Name
+                            </SortableHeadCell>
                         )}
                         
                         {visibleColumns.sourceServer && (
-                            <StyledTableCell>{mapping.import_server}</StyledTableCell>
+                            <SortableHeadCell 
+                                onClick={() => requestSort('import_server')}
+                                sortDirection={getSortDirection('import_server')}
+                            >
+                                Source Server
+                            </SortableHeadCell>
+                        )}
+
+                        {visibleColumns.exportServer && (
+                            <SortableHeadCell 
+                                onClick={() => requestSort('export_server')}
+                                sortDirection={getSortDirection('export_server')}
+                            >
+                                Destination Server
+                            </SortableHeadCell>
                         )}
                         
                         {visibleColumns.newTableName && (
-                            <StyledTableCell>{mapping.new_table_name}</StyledTableCell>
+                            <SortableHeadCell 
+                                onClick={() => requestSort('new_table_name')}
+                                sortDirection={getSortDirection('new_table_name')}
+                            >
+                                New Table Name
+                            </SortableHeadCell>
                         )}
                         
                         {visibleColumns.lastUpdate && (
-                            <StyledTableCell>{new Date(mapping.last_update).toLocaleString()}</StyledTableCell>
+                            <SortableHeadCell 
+                                onClick={() => requestSort('last_update')}
+                                sortDirection={getSortDirection('last_update')}
+                            >
+                                Last Update
+                            </SortableHeadCell>
                         )}
                         
                         {visibleColumns.actions && (
-                            <StyledTableCell onClick={(e) => e.stopPropagation()}>
-                                <ActionsContainer>
-                                    <Tooltip title="View Mapping Details">
-                                        <ActionIconButton 
-                                            onClick={(e) => handleEditClick(mapping, e)}
-                                            bgcolor="25, 118, 210" // כחול
-                                            size="small"
-                                        >
-                                            <DynamicFeedRounded style={{ color: '#1976d2', fontSize: '22px' }} />
-                                        </ActionIconButton>
-                                    </Tooltip>
-                                    
-                                    <Tooltip title="Edit Mapping">
-                                        <ActionIconButton 
-                                            onClick={(e) => handleEditClick(mapping, e)}
-                                            bgcolor="76, 175, 80" // ירוק
-                                            size="small"
-                                        >
-                                            <TuneRounded style={{ color: '#4caf50', fontSize: '22px' }} />
-                                        </ActionIconButton>
-                                    </Tooltip>
-                                    
-                                    <Tooltip title="Delete Mapping">
-                                        <ActionIconButton 
-                                            onClick={(e) => handleDeleteClick(mapping.id, e)}
-                                            bgcolor="244, 67, 54" // אדום
-                                            size="small"
-                                        >
-                                            <DeleteSweepRounded style={{ color: '#f44336', fontSize: '22px' }} />
-                                        </ActionIconButton>
-                                    </Tooltip>
-                                </ActionsContainer>
-                            </StyledTableCell>
+                            <SortableHeadCell>
+                                Actions
+                            </SortableHeadCell>
                         )}
                     </TableRow>
-                ))}
-            </TableBody>
+                </TableHead>
+                <TableBody>
+    {sortedMappings.map(mapping => (
+        <TableRow 
+            key={mapping.id}
+            onClick={() => handleRowClick(mapping.id)}
+            hover
+            sx={{ 
+                cursor: 'pointer',
+                backgroundColor: selectedMappings.includes(mapping.id) ? 'rgba(25, 118, 210, 0.04)' : 'inherit',
+                '&:hover': {
+                    backgroundColor: selectedMappings.includes(mapping.id) ? 'rgba(25, 118, 210, 0.08)' : 'rgba(0, 0, 0, 0.04)',
+                }
+            }}
+        >
+            {/* נוסף תא עם אינדיקטור בחירה (נקודה) */}
+            <SelectionIndicatorCell>
+                {selectedMappings.includes(mapping.id) && <SelectionIndicator />}
+            </SelectionIndicatorCell>
+            
+            {visibleColumns.status && (
+                <StyledTableCell onClick={(e) => e.stopPropagation()}>
+                    <IconButton 
+                        onClick={(e) => handleStatusToggle(mapping.id, mapping.status, e)}
+                        size="small"
+                    >
+                        <StatusIcon status={mapping.status} />
+                    </IconButton>
+                </StyledTableCell>
+            )}
+            
+            {visibleColumns.id && (
+                <StyledTableCell>{mapping.id}</StyledTableCell>
+            )}
+
+            {visibleColumns.mappingName && (
+                <StyledTableCell>{mapping.mapping_name}</StyledTableCell>
+            )}
+            
+            {visibleColumns.sourceServer && (
+                <StyledTableCell>{mapping.import_server}</StyledTableCell>
+            )}
+
+            {visibleColumns.exportServer && (
+                <StyledTableCell>{mapping.export_server}</StyledTableCell>
+            )}
+            
+            {visibleColumns.newTableName && (
+                <StyledTableCell>{mapping.new_table_name}</StyledTableCell>
+            )}
+            
+            {visibleColumns.lastUpdate && (
+                <StyledTableCell>{new Date(mapping.last_update).toLocaleString()}</StyledTableCell>
+            )}
+            
+            {visibleColumns.actions && (
+    <StyledTableCell onClick={(e) => e.stopPropagation()}>
+        <ActionsContainer>
+            <Tooltip title="View Mapping Details">
+                <ActionIconButton 
+                    onClick={(e) => handleViewDetailsClick(mapping.id, e)}
+                    bgcolor="25, 118, 210" // כחול
+                    size="small"
+                >
+                    <DynamicFeedRounded style={{ color: '#1976d2', fontSize: '22px' }} />
+                </ActionIconButton>
+            </Tooltip>
+            
+            <Tooltip title="Edit Mapping">
+                <ActionIconButton 
+                    onClick={(e) => handleEditClick(mapping, e)}
+                    bgcolor="76, 175, 80" // ירוק
+                    size="small"
+                >
+                    <TuneRounded style={{ color: '#4caf50', fontSize: '22px' }} />
+                </ActionIconButton>
+            </Tooltip>
+            
+            <Tooltip title="Delete Mapping">
+                <ActionIconButton 
+                    onClick={(e) => handleDeleteClick(mapping.id, e)}
+                    bgcolor="244, 67, 54" // אדום
+                    size="small"
+                >
+                    <DeleteSweepRounded style={{ color: '#f44336', fontSize: '22px' }} />
+                </ActionIconButton>
+            </Tooltip>
+        </ActionsContainer>
+    </StyledTableCell>
+            )}
+        </TableRow>
+    ))}
+                </TableBody>
             </Table>
 
             {/* הודעה כאשר אין מיפויים להצגה */}
@@ -1182,6 +1455,324 @@ function MappingList() {
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Field Mappings Dialog */}
+            <Dialog
+                open={fieldMappingDialogOpen}
+                onClose={handleCloseFieldMappingsDialog}
+                maxWidth="md"
+                fullWidth
+            >
+                <DialogTitle>
+                    Field Mappings: {selectedMappingName}
+                </DialogTitle>
+                <DialogContent>
+                    {selectedFieldMappings ? (
+                        <Table size="small">
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell sx={{ fontWeight: 'bold' }}>Source Field</TableCell>
+                                    <TableCell sx={{ fontWeight: 'bold' }}>Target Field</TableCell>
+                                    <TableCell sx={{ fontWeight: 'bold' }}>Data Type</TableCell>
+                                    <TableCell sx={{ fontWeight: 'bold' }}>Transformation</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {Array.isArray(selectedFieldMappings) ? (
+                                    selectedFieldMappings.map((mapping, index) => (
+                                        <TableRow key={index}>
+                                            <TableCell>{mapping.sourceField || mapping.source_field || '-'}</TableCell>
+                                            <TableCell>{mapping.targetField || mapping.target_field || '-'}</TableCell>
+                                            <TableCell>{mapping.dataType || mapping.data_type || '-'}</TableCell>
+                                            <TableCell>{mapping.transformation || '-'}</TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    // אם מיפוי השדות אינו מערך, מציגים כטקסט JSON
+                                    <TableRow>
+                                        <TableCell colSpan={4}>
+                                            <Box 
+                                                component="pre" 
+                                                sx={{ 
+                                                    whiteSpace: 'pre-wrap', 
+                                                    overflow: 'auto',
+                                                    maxHeight: '400px',
+                                                    padding: '8px',
+                                                    backgroundColor: '#f5f5f5',
+                                                    borderRadius: '4px'
+                                                }}
+                                            >
+                                                {JSON.stringify(selectedFieldMappings, null, 2)}
+                                            </Box>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                        <Typography>No field mappings available.</Typography>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseFieldMappingsDialog}>Close</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Mapping Details Dialog */}
+<Dialog
+    open={mappingDetailsDialogOpen}
+    onClose={handleCloseMappingDetailsDialog}
+    maxWidth="lg"
+    fullWidth
+    aria-labelledby="mapping-details-dialog-title"
+>
+    <DialogTitle id="mapping-details-dialog-title">
+        Mapping Details: {selectedMappingDetails?.mapping_name || ''}
+        <IconButton
+            aria-label="close"
+            onClick={handleCloseMappingDetailsDialog}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+        >
+            <CancelIcon />
+        </IconButton>
+    </DialogTitle>
+        <DialogContent dividers>
+            {selectedMappingDetails ? (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {/* כרטיסיות לניווט בין חלקי המיפוי */}
+                    <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                        <Tabs value={activeTab} onChange={(e, newTab) => setActiveTab(newTab)} aria-label="mapping details tabs">
+                            <Tab label="General Info" id="tab-0" />
+                            <Tab label="Source & Destination" id="tab-1" />
+                            <Tab label="Field Mappings" id="tab-2" />
+                            <Tab label="Preview Data" id="tab-3" />
+                        </Tabs>
+                    </Box>
+                    
+                    {/* תוכן כרטיסיה 1 - מידע כללי */}
+                    <Box hidden={activeTab !== 0} sx={{ pt: 2 }}>
+                        <Table size="small">
+                            <TableBody>
+                                <TableRow>
+                                    <TableCell component="th" sx={{ fontWeight: 'bold', width: '30%' }}>ID</TableCell>
+                                    <TableCell>{selectedMappingDetails.id}</TableCell>
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell component="th" sx={{ fontWeight: 'bold' }}>Mapping Name</TableCell>
+                                    <TableCell>{selectedMappingDetails.mapping_name}</TableCell>
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell component="th" sx={{ fontWeight: 'bold' }}>Mapping Info</TableCell>
+                                    <TableCell>{selectedMappingDetails.mapping_info}</TableCell>
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell component="th" sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                                    <TableCell>
+                                        <Chip 
+                                            icon={selectedMappingDetails.status === 1 ? <VisibilityOutlined /> : <VisibilityOffOutlined />}
+                                            label={selectedMappingDetails.status === 1 ? 'Active' : 'Inactive'}
+                                            color={selectedMappingDetails.status === 1 ? 'success' : 'error'}
+                                            variant="outlined"
+                                            size="small"
+                                        />
+                                    </TableCell>
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell component="th" sx={{ fontWeight: 'bold' }}>Last Update</TableCell>
+                                    <TableCell>{new Date(selectedMappingDetails.last_update).toLocaleString()}</TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
+                    </Box>
+                    
+                    {/* תוכן כרטיסיה 2 - מקור ויעד */}
+                    <Box hidden={activeTab !== 1} sx={{ pt: 2 }}>
+                        <Grid container spacing={3}>
+                            <Grid item xs={6}>
+                                <Paper sx={{ p: 2, height: '100%' }}>
+                                    <Typography variant="h6" color="primary" gutterBottom>Source</Typography>
+                                    <Table size="small">
+                                        <TableBody>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold', width: '40%' }}>Server Type</TableCell>
+                                                <TableCell>{selectedMappingDetails.import_server_type}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold' }}>Connection Type</TableCell>
+                                                <TableCell>{selectedMappingDetails.import_connection_type}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold' }}>Server</TableCell>
+                                                <TableCell>{selectedMappingDetails.import_server}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold' }}>Database</TableCell>
+                                                <TableCell>{selectedMappingDetails.import_database}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold' }}>Table</TableCell>
+                                                <TableCell>{selectedMappingDetails.source_table || selectedMappingDetails.new_table_name || "FileTransfer"}</TableCell>
+                                            </TableRow>
+                                        </TableBody>
+                                    </Table>
+                                </Paper>
+                            </Grid>
+                            <Grid item xs={6}>
+                                <Paper sx={{ p: 2, height: '100%' }}>
+                                    <Typography variant="h6" color="primary" gutterBottom>Destination</Typography>
+                                    <Table size="small">
+                                        <TableBody>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold', width: '40%' }}>Server Type</TableCell>
+                                                <TableCell>{selectedMappingDetails.export_server_type}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold' }}>Connection Type</TableCell>
+                                                <TableCell>{selectedMappingDetails.export_connection_type}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold' }}>Server</TableCell>
+                                                <TableCell>{selectedMappingDetails.export_server}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold' }}>Database</TableCell>
+                                                <TableCell>{selectedMappingDetails.export_database}</TableCell>
+                                            </TableRow>
+                                            <TableRow>
+                                                <TableCell component="th" sx={{ fontWeight: 'bold' }}>New Table Name</TableCell>
+                                                <TableCell>{selectedMappingDetails.new_table_name}</TableCell>
+                                            </TableRow>
+                                        </TableBody>
+                                    </Table>
+                                </Paper>
+                            </Grid>
+                        </Grid>
+                    </Box>
+                    
+                    {/* תוכן כרטיסיה 3 - מיפויי שדות */}
+
+                    <Box hidden={activeTab !== 2} sx={{ pt: 2 }}>
+    {selectedMappingDetails?.fieldMappings && Object.keys(selectedMappingDetails.fieldMappings).length > 0 ? (
+        <Table size="small">
+            <TableHead>
+                <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Source Field</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Target Field</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Source Table</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Source Database</TableCell>
+                </TableRow>
+            </TableHead>
+            <TableBody>
+                {/* בדיקה אם יש מבנה עם mappings */}
+                {selectedMappingDetails.fieldMappings.mappings ? (
+                    /* אם כן, השתמש במבנה החדש */
+                    Object.entries(selectedMappingDetails.fieldMappings.mappings).map(([sourceField, mapping]) => (
+                        <TableRow key={sourceField}>
+                            <TableCell>{sourceField}</TableCell>
+                            <TableCell>{mapping.newName ? String(mapping.newName) : sourceField}</TableCell>
+                            <TableCell>
+                                {selectedMappingDetails.source_table || 
+                                selectedMappingDetails.new_table_name || 
+                                "FileTransfer"}
+                            </TableCell>
+                            <TableCell>{mapping.dbName ? String(mapping.dbName) : (selectedMappingDetails.import_database || 'N/A')}</TableCell>
+                        </TableRow>
+                    ))
+                ) : (
+                    /* אחרת, השתמש במבנה הישן */
+                    Object.entries(selectedMappingDetails.fieldMappings).map(([sourceField, mapping]) => (
+                        <TableRow key={sourceField}>
+                            <TableCell>{sourceField}</TableCell>
+                            <TableCell>
+                                {typeof mapping === 'object' 
+                                    ? (mapping.newName ? String(mapping.newName) : sourceField) 
+                                    : (mapping ? String(mapping) : sourceField)}
+                            </TableCell>
+                            <TableCell>
+                                {selectedMappingDetails.source_table || 
+                                selectedMappingDetails.new_table_name || 
+                                "FileTransfer"}
+                            </TableCell>
+                            <TableCell>{selectedMappingDetails.import_database || 'N/A'}</TableCell>
+                        </TableRow>
+                    ))
+                )}
+            </TableBody>
+        </Table>
+    ) : (
+        <Typography variant="body1" color="text.secondary">
+            No field mappings defined for this mapping.
+        </Typography>
+    )}
+                    </Box>
+                    
+                    {/* תוכן כרטיסיה 4 - תצוגה מקדימה של הנתונים */}
+                    <Box hidden={activeTab !== 3} sx={{ pt: 2 }}>
+    {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress />
+        </Box>
+    ) : mappingTableData && mappingTableData.length > 0 ? (
+        <Box sx={{ overflowX: 'auto' }}>
+            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                Preview Data from {selectedMappingDetails.new_table_name} (Destination Table)
+            </Typography>
+            
+            <Table size="small" sx={{ border: '1px solid #e0e0e0' }}>
+                <TableHead>
+                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                        {Object.keys(mappingTableData[0]).map((column, index) => (
+                            <TableCell key={index} sx={{ fontWeight: 'bold' }}>
+                                {column}
+                            </TableCell>
+                        ))}
+                    </TableRow>
+                </TableHead>
+                <TableBody>
+                    {mappingTableData.map((row, rowIndex) => (
+                        <TableRow key={rowIndex}>
+                            {Object.values(row).map((value, cellIndex) => (
+                                <TableCell key={cellIndex}>
+                                    {value !== null ? String(value) : 'NULL'}
+                                </TableCell>
+                            ))}
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </Box>
+    ) : (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', p: 3 }}>
+            <Typography variant="body1" color="text.secondary" gutterBottom>
+                No data available for preview.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+                Destination: {selectedMappingDetails.export_server}/{selectedMappingDetails.export_database}/{selectedMappingDetails.new_table_name}
+            </Typography>
+        </Box>
+    )}
+        </Box>
+                </Box>
+            ) : (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                    <CircularProgress />
+                </Box>
+            )}
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={handleCloseMappingDetailsDialog}>Close</Button>
+                <Button 
+                    variant="contained" 
+                    color="primary" 
+                    onClick={() => {
+                        handleCloseMappingDetailsDialog();
+                        navigate(`/mapping/edit/${selectedMappingDetails?.id}`);
+                    }}
+                >
+                    Edit Mapping
+                </Button>
+            </DialogActions>
+        </Dialog>
 
             {/* Snackbar for notifications */}
             <Snackbar 

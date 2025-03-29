@@ -1,5 +1,5 @@
-import React from 'react';
-import { Grid, TextField, MenuItem, IconButton, Tooltip, InputAdornment } from '@mui/material';
+import React, { useEffect, useState } from 'react';
+import { Grid, TextField, MenuItem, IconButton, Tooltip, InputAdornment, FormControl, InputLabel, Select, Checkbox, ListItemText } from '@mui/material';
 import { Add, Remove, FilterList } from '@mui/icons-material';
 import ComparisonSelect from './components/ComparisonSelect';
 
@@ -13,52 +13,118 @@ const ConditionRow = ({
   relatedTables, 
   relatedFields 
 }) => {
-  // פונקציה לבדיקה אם נדרשה בחירת שדות מרובים
+  // Define which comparison types require multiple field selection
   const isMultipleFieldSelection = (comparison) => 
     ['is_duplicate', 'count_occurrence', 'same_name_diff_ext', 'same_ext_diff_names', 'fields_equal'].includes(comparison);
 
+  // Track the current comparison type
+  const [currentComparison, setCurrentComparison] = useState(condition.comparison || 'equal');
+  
+  // Update local state when external condition changes
+  useEffect(() => {
+    setCurrentComparison(condition.comparison || 'equal');
+  }, [condition.comparison]);
+
+  // Handle change in comparison type
+  const handleComparisonChange = (e) => {
+    const newComparison = e.target.value;
+    setCurrentComparison(newComparison);
+    
+    // Update parent component through callback
+    onConditionChange(index, 'comparison', newComparison);
+  };
+
+  const renderFieldSelection = () => {
+    // Skip for special conditions that have their own field handling
+    if (currentComparison === 'related_count' || currentComparison === 'execution_count') {
+      return null;
+    }
+    
+    // Conditions that ALWAYS support multiple field selection
+    const alwaysMultipleFieldComparisons = [
+      'is_duplicate', 
+      'count_occurrence', 
+      'same_name_diff_ext', 
+      'same_ext_diff_names', 
+      'fields_equal'
+    ];
+  
+    // Determine if multiple selection is allowed
+    const isMultipleAllowed = alwaysMultipleFieldComparisons.includes(currentComparison);
+    
+    // Ensure field is an array
+    const fieldArray = Array.isArray(condition.field) ? condition.field : 
+                      (condition.field ? [condition.field] : []);
+                      
+    return (
+      <Grid item xs={3}>
+        <FormControl fullWidth>
+          <InputLabel>Select Field(s)</InputLabel>
+          <Select
+            multiple={isMultipleAllowed}
+            value={fieldArray}
+            onChange={(e) => {
+              // For single selection comparisons, take first value
+              const value = isMultipleAllowed 
+                ? e.target.value 
+                : (Array.isArray(e.target.value) ? e.target.value[0] : e.target.value);
+              
+              onConditionChange(index, 'field', value);
+            }}
+            renderValue={(selected) => 
+              Array.isArray(selected) ? selected.join(', ') : selected
+            }
+            label="Select Field(s)"
+          >
+            {columns.map((column) => (
+              <MenuItem key={column} value={column}>
+                {isMultipleAllowed && (
+                  <Checkbox checked={fieldArray.indexOf(column) > -1} />
+                )}
+                <ListItemText primary={column} />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+    );
+  };
+
   return (
     <Grid container spacing={2} alignItems="center">
-      {/* תנאי הצגת שדה ראשי */}
-      {!(
-        ['related_count', 'execution_count', 'is_duplicate', 'count_occurrence'].includes(condition.comparison)
-      ) && (
-        <Grid item xs={3}>
-          <Tooltip title="Select the field(s) to check in this condition">
-            <TextField
-              label="Field"
-              select
-              fullWidth
-              SelectProps={{
-                multiple: isMultipleFieldSelection(condition.comparison)
-              }}
-              value={
-                isMultipleFieldSelection(condition.comparison)
-                  ? (Array.isArray(condition.field) ? condition.field : [])
-                  : condition.field
-              }
-              onChange={(e) => onConditionChange(index, 'field', e.target.value)}
-            >
-              {columns.map((column) => (
-                <MenuItem key={column} value={column}>
-                  {column}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Tooltip>
-        </Grid>
-      )}
-
+      {/* Comparison type selector - always visible */}
       <Grid item xs={3}>
         <ComparisonSelect
-          value={condition.comparison}
-          onChange={(e) => onConditionChange(index, 'comparison', e.target.value)}
+          value={condition.comparison || 'equal'}
+          onChange={handleComparisonChange}
         />
       </Grid>
 
-      {condition.comparison === 'related_count' && (
+      {/* Field selection - depends on comparison type */}
+      {renderFieldSelection()}
+
+      {/* Custom UI for related_count comparison */}
+      {currentComparison === 'related_count' && (
         <>
-          <Grid item xs={6}>
+          <Grid item xs={3}>
+            <Tooltip title="Select the field to link with related table">
+              <TextField
+                label="Main Field"
+                select
+                fullWidth
+                value={condition.field || ''}
+                onChange={(e) => onConditionChange(index, 'field', e.target.value)}
+              >
+                {columns.map((column) => (
+                  <MenuItem key={column} value={column}>
+                    {column}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Tooltip>
+          </Grid>
+          
+          <Grid item xs={3}>
             <Tooltip title="Select the related table">
               <TextField
                 label="Related Table"
@@ -76,7 +142,7 @@ const ConditionRow = ({
             </Tooltip>
           </Grid>
 
-          <Grid item xs={6}>
+          <Grid item xs={3}>
             <Tooltip title="Select the field(s) in the related table to match">
               <TextField
                 label="Related Field"
@@ -121,7 +187,8 @@ const ConditionRow = ({
         </>
       )}
 
-      {condition.comparison === 'execution_count' && (
+      {/* Custom UI for execution_count comparison */}
+      {currentComparison === 'execution_count' && (
         <>
           <Grid item xs={3}>
             <Tooltip title="Select the linking field in the main table">
@@ -141,7 +208,7 @@ const ConditionRow = ({
             </Tooltip>
           </Grid>
           
-          <Grid item xs={3}>
+          <Grid item xs={2}>
             <Tooltip title="Select the related history table">
               <TextField
                 label="History Table"
@@ -159,7 +226,7 @@ const ConditionRow = ({
             </Tooltip>
           </Grid>
           
-          <Grid item xs={3}>
+          <Grid item xs={2}>
             <Tooltip title="Select the linking field in the history table">
               <TextField
                 label="History Table Field"
@@ -178,7 +245,7 @@ const ConditionRow = ({
             </Tooltip>
           </Grid>
           
-          <Grid item xs={3}>
+          <Grid item xs={2}>
             <Tooltip title="Enter the maximum number of executions (includes processes that never ran)">
               <TextField
                 label="Maximum Executions"
@@ -208,23 +275,23 @@ const ConditionRow = ({
         </>
       )}
 
-      {(
-        condition.comparison !== 'is_duplicate' && 
-        condition.comparison !== 'count_occurrence' && 
-        condition.comparison !== 'execution_count'
-      ) && (
+      {/* Value field for conditions that require a comparison value */}
+      {!isMultipleFieldSelection(currentComparison) && 
+       currentComparison !== 'related_count' && 
+       currentComparison !== 'execution_count' && (
         <Grid item xs={3}>
           <Tooltip title="Enter the value to compare against">
             <TextField
               label="Value"
               fullWidth
-              value={condition.value}
+              value={condition.value || ''}
               onChange={(e) => onConditionChange(index, 'value', e.target.value)}
             />
           </Tooltip>
         </Grid>
       )}
 
+      {/* Add/Remove buttons */}
       <Grid item xs={1}>
         <Tooltip title="Add new condition">
           <IconButton color="primary" onClick={onAddCondition}>

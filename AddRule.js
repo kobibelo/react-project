@@ -156,71 +156,121 @@ useEffect(() => {
   };
 
   const handleConditionChange = (index, field, value) => {
+    console.log(`Changing ${field} to:`, value, "for condition", index);
     const newConditions = [...conditions];
 
     if (field === 'field') {
-        const isMultipleSelect = ['is_duplicate', 'count_occurrence', 'same_name_diff_ext', 'same_ext_diff_names', 'fields_equal'].includes(newConditions[index].comparison);
-        
+        // פונקציה זו מטפלת בשינוי השדה/שדות
+        // אין צורך לשנות את הערך שמתקבל - נשמור אותו כפי שהוא (בודד או מערך)
         newConditions[index] = {
             ...newConditions[index],
-            field: isMultipleSelect ? value : (Array.isArray(value) ? value[0] : value)
+            field: value
         };
-    } else if (field === 'comparison') {
+    } 
+    else if (field === 'comparison') {
+        // פונקציה זו מטפלת בשינוי סוג ההשוואה
         const isMultipleSelect = ['is_duplicate', 'count_occurrence', 'same_name_diff_ext', 'same_ext_diff_names', 'fields_equal'].includes(value);
         
         if (value === 'related_count') {
-          const previousConditionField = index > 0 
-              ? (Array.isArray(conditions[index-1].field) 
-                  ? conditions[index-1].field[0] 
-                  : conditions[index-1].field)
-              : '';
-      
-          newConditions[index] = {
-              ...newConditions[index],
-              comparison: value,
-              field: previousConditionField,
-              relatedTable: '',
-              relatedField: '',
-              selectedRelatedColumns: [],
-              value: '1'
-          };
-      } else {
+            // טיפול מיוחד עבור תנאי related_count
+            const previousConditionField = index > 0 
+                ? (Array.isArray(conditions[index-1].field) 
+                    ? conditions[index-1].field[0] 
+                    : conditions[index-1].field)
+                : '';
+        
             newConditions[index] = {
                 ...newConditions[index],
                 comparison: value,
-                field: isMultipleSelect ? 
-                    (Array.isArray(newConditions[index].field) ? newConditions[index].field : []) : 
-                    (Array.isArray(newConditions[index].field) ? newConditions[index].field[0] : newConditions[index].field)
+                field: previousConditionField || '',
+                relatedTable: '',
+                relatedField: '',
+                selectedRelatedColumns: [],
+                value: '1'
+            };
+        } 
+        else if (value === 'execution_count') {
+            // טיפול מיוחד עבור תנאי execution_count
+            const currentField = newConditions[index].field 
+                ? (Array.isArray(newConditions[index].field) 
+                    ? newConditions[index].field[0] 
+                    : newConditions[index].field)
+                : (columns.length > 0 ? columns[0] : '');
+                
+            newConditions[index] = {
+                ...newConditions[index],
+                comparison: value,
+                field: currentField,
+                relatedTable: '',
+                relatedField: '',
+                value: '10' // ברירת מחדל
             };
         }
-    } else if (field === 'relatedTable') {
+        else {
+            // טיפול בשינוי לסוגי תנאים אחרים
+            const currentField = newConditions[index].field;
+            
+            if (isMultipleSelect) {
+                // אם התנאי החדש דורש בחירה מרובה
+                newConditions[index] = {
+                    ...newConditions[index],
+                    comparison: value,
+                    // אם השדה הנוכחי הוא מערך, נשאיר אותו. אחרת, נהפוך לתא בודד במערך
+                    field: Array.isArray(currentField) ? currentField : 
+                          (currentField ? [currentField] : [])
+                };
+            } else {
+                // אם התנאי החדש דורש בחירה בודדת
+                newConditions[index] = {
+                    ...newConditions[index],
+                    comparison: value,
+                    // אם השדה הנוכחי הוא מערך, ניקח את הערך הראשון. אחרת, נשאיר כפי שהוא
+                    field: Array.isArray(currentField) && currentField.length > 0 ? 
+                          currentField[0] : currentField
+                };
+            }
+            
+            // איפוס שדות שלא רלוונטיים לתנאים רגילים
+            newConditions[index] = {
+                ...newConditions[index],
+                relatedTable: undefined,
+                relatedField: undefined,
+                filterCondition: undefined
+            };
+            
+            // איפוס ערך לתנאים מיוחדים שלא דורשים ערך השוואה
+            if (isMultipleSelect) {
+                newConditions[index].value = '';
+            }
+        }
+    } 
+    else if (field === 'relatedTable') {
+        // עדכון שדות קשורים לטבלה קשורה
         newConditions[index].relatedTable = value;
         newConditions[index].relatedField = '';
-        
-        if (value) {
-            axios.post('http://localhost:3001/fetch-table-data', { tableName: value })
-              .then(response => {
-                  setRelatedFields(Object.keys(response.data.tableData[0]));
-              })
-              .catch(error => {
-                  console.error('Error fetching related table fields:', error);
-              });
-        }
-    } else if (field === 'relatedField') {
-        newConditions[index].relatedField = Array.isArray(value) ? value : [value];
-    } else {
+    } 
+    else if (field === 'relatedField') {
+        // עדכון שדה קשור
+        newConditions[index].relatedField = value;
+    } 
+    else if (field === 'connector' && index < conditions.length - 1) {
+        // עדכון המחבר (AND/OR) בין תנאים
+        newConditions[index].connector = value;
+    } 
+    else {
+        // עדכון שדות אחרים
         newConditions[index] = {
             ...newConditions[index],
             [field]: value
         };
     }
 
-    if (field === 'connector' && index < conditions.length - 1) {
-        newConditions[index].connector = value;
-    }
-
+    // Debug info - להסרה בגרסה סופית
+    console.log("Updated condition:", newConditions[index]);
+    
+    // עדכון מצב התנאים
     setConditions(newConditions);
-  };
+};
 
   const handleSave = async () => {
     console.log("🔹 Running handleSave...");
@@ -264,6 +314,10 @@ useEffect(() => {
         console.error('❌ Error saving rule:', error);
     }
   };
+
+  // פונקציה לבדיקה אם התנאי דורש בחירת ריבוי שדות
+const isMultipleFieldSelection = (comparison) => 
+  ['is_duplicate', 'count_occurrence', 'same_name_diff_ext', 'same_ext_diff_names', 'fields_equal'].includes(comparison);
 
   const queryDB = async () => {
     if (!selectedTable) {
@@ -367,21 +421,21 @@ useEffect(() => {
 
       {Array.isArray(conditions) && conditions.map((condition, index) => (
         <React.Fragment key={index}>
-          <Card sx={{ marginBottom: '20px' }}>
-            <CardContent>
-            <ConditionRow
-              key={index}
-              condition={condition}
-              index={index}
-              onConditionChange={handleConditionChange}
-              onAddCondition={addCondition}
-              onRemoveCondition={removeCondition}
-              columns={columns}
-              relatedTables={relatedTables}
-              relatedFields={relatedFields}
-            />
-            </CardContent>
-          </Card>
+      <Card sx={{ marginBottom: '20px' }}>
+        <CardContent>
+          <ConditionRow
+            key={index}
+            condition={condition}
+            index={index}
+            onConditionChange={handleConditionChange}
+            onAddCondition={addCondition}
+            onRemoveCondition={removeCondition}
+            columns={columns}
+            relatedTables={relatedTables}
+            relatedFields={relatedFields}
+          />
+        </CardContent>
+      </Card>
 
           {index < conditions.length - 1 && (
             <Grid container spacing={2} sx={{ marginBottom: '20px' }}>
